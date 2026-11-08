@@ -1,0 +1,17 @@
+{
+  "name": "Mi Luz RD — consumo de luz",
+  "short_name": "Mi Luz RD",
+  "description": "Mide tu consumo de luz con fotos del contador y compáralo con la factura de la distribuidora.",
+  "lang": "es-DO",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#155e75",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

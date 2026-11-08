@@ -1,0 +1,4 @@
+* text=auto
+vendor/** -text
+*.png binary
+*.gz binary

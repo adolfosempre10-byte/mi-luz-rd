@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi Luz RD</title>
+<meta name="description" content="Mide tu consumo de luz con fotos del contador y compáralo con la factura.">
+<meta name="theme-color" content="#155e75">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mi Luz RD">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <h1>⚡ Mi Luz RD</h1>
+  <span id="distLabel" class="pill"></span>
+</header>
+
+<main>
+  <!-- INICIO -->
+  <section id="v-inicio" class="view active">
+    <div class="period-nav">
+      <button id="prevP" class="icon-btn" aria-label="Período anterior">‹</button>
+      <div id="periodLabel" class="period-label"></div>
+      <button id="nextP" class="icon-btn" aria-label="Período siguiente">›</button>
+    </div>
+    <div id="summary"></div>
+    <button class="big" id="btnNueva">📷 Anotar lectura de hoy</button>
+    <div class="card">
+      <h3>Consumo por día</h3>
+      <div id="chart"></div>
+    </div>
+    <div class="card">
+      <h3>Día a día y suma del mes</h3>
+      <div id="daily"></div>
+    </div>
+  </section>
+
+  <!-- LECTURAS -->
+  <section id="v-lecturas" class="view">
+    <button class="big" id="btnNueva2">📷 Nueva lectura</button>
+    <div id="readingsList"></div>
+  </section>
+
+  <!-- FACTURAS -->
+  <section id="v-facturas" class="view">
+    <div class="card info">
+      Anota lo que dice tu factura de la distribuidora y la app lo compara con tus propias fotos del contador.
+    </div>
+    <button class="big" id="btnFactura">🧾 Anotar una factura</button>
+    <div id="billsList"></div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section id="v-ajustes" class="view">
+    <div class="card">
+      <h3>Mi factura</h3>
+      <label>Día de corte de la factura
+        <input id="cutDay" type="number" min="1" max="31" inputmode="numeric">
+      </label>
+      <p class="hint">Es el día del mes en que la distribuidora lee el contador (mira "período facturado" en tu factura).</p>
+      <label>Distribuidora
+        <select id="distributor">
+          <option value="edesur">Edesur</option>
+          <option value="edenorte">Edenorte</option>
+          <option value="edeeste">Edeeste</option>
+          <option value="otra">Otra / personalizada</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="card">
+      <h3>Tarifa residencial BTS-1</h3>
+      <p class="hint" id="tariffSource"></p>
+      <div class="grid2">
+        <label>Cargo fijo si gastas 0–100 kWh (RD$)<input id="t_fixedLow" type="number" step="0.01" inputmode="decimal"></label>
+        <label>Cargo fijo si gastas más de 100 kWh (RD$)<input id="t_fixedHigh" type="number" step="0.01" inputmode="decimal"></label>
+        <label>Primeros 0–200 kWh (RD$/kWh)<input id="t_r1" type="number" step="0.01" inputmode="decimal"></label>
+        <label>De 201 a 300 kWh (RD$/kWh)<input id="t_r2" type="number" step="0.01" inputmode="decimal"></label>
+        <label>De 301 a 700 kWh (RD$/kWh)<input id="t_r3" type="number" step="0.01" inputmode="decimal"></label>
+        <label>701 kWh o más: TODOS los kWh a (RD$/kWh)<input id="t_r4" type="number" step="0.01" inputmode="decimal"></label>
+      </div>
+      <button id="btnResetTariff" class="secondary">Volver a la tarifa oficial de la distribuidora</button>
+      <p class="hint">La tarifa la fija la SIE cada 3 meses. Si cambia, corrige aquí los números (están en la página de la SIE o en tu factura).</p>
+    </div>
+
+    <div class="card">
+      <h3>Copia de seguridad</h3>
+      <p class="hint">Tus fotos y lecturas se guardan solo en este teléfono. Haz una copia de vez en cuando y guárdala en tu correo o en Drive.</p>
+      <button id="btnExport" class="secondary">⬇️ Guardar copia (archivo)</button>
+      <label class="secondary file-btn">⬆️ Recuperar desde una copia
+        <input id="importFile" type="file" accept="application/json,.json" hidden>
+      </label>
+      <button id="btnWipe" class="danger">Borrar todos los datos</button>
+    </div>
+
+    <div class="card" id="installCard">
+      <h3>Instalar en el teléfono</h3>
+      <button id="btnInstall" class="secondary" hidden>📲 Instalar la app</button>
+      <p class="hint">Android (Chrome): menú ⋮ → "Agregar a la pantalla principal" o "Instalar app".<br>
+      iPhone (Safari): botón Compartir → "Agregar a inicio".</p>
+      <p class="hint" id="storageInfo"></p>
+    </div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button data-view="inicio" class="active"><span>🏠</span>Inicio</button>
+  <button data-view="lecturas"><span>📷</span>Lecturas</button>
+  <button data-view="facturas"><span>🧾</span>Facturas</button>
+  <button data-view="ajustes"><span>⚙️</span>Ajustes</button>
+</nav>
+
+<!-- Diálogo: nueva / editar lectura -->
+<dialog id="dlgLectura">
+  <form method="dialog" id="formLectura">
+    <h2 id="dlgLecturaTitle">Nueva lectura</h2>
+    <div class="row2">
+      <label class="primary file-btn">📷 Tomar foto
+        <input id="camInput" type="file" accept="image/*" capture="environment" hidden>
+      </label>
+      <label class="secondary file-btn">🖼️ De la galería
+        <input id="galInput" type="file" accept="image/*" hidden>
+      </label>
+    </div>
+    <div id="photoArea" hidden>
+      <div class="cropwrap" id="cropwrap">
+        <img id="photoImg" alt="Foto del contador">
+        <div id="selBox" hidden></div>
+      </div>
+      <p class="hint">Si leyó mal: pasa el dedo sobre los números del contador para encerrarlos y toca "Leer otra vez".</p>
+      <button type="button" id="btnOcr" class="secondary">🔍 Leer otra vez</button>
+    </div>
+    <p id="ocrStatus" class="status"></p>
+    <label>Lectura del contador (kWh)
+      <input id="readingValue" type="text" inputmode="decimal" autocomplete="off" placeholder="Ej. 12345" required>
+    </label>
+    <p id="readingHint" class="hint"></p>
+    <label>Fecha y hora
+      <input id="readingDate" type="datetime-local" autocomplete="off" required>
+    </label>
+    <div class="row2">
+      <button type="button" id="btnCancelLectura" class="secondary">Cancelar</button>
+      <button type="submit" id="btnSaveLectura" class="primary">Guardar</button>
+    </div>
+    <button type="button" id="btnDeleteLectura" class="danger" hidden>Borrar esta lectura</button>
+  </form>
+</dialog>
+
+<!-- Diálogo: factura -->
+<dialog id="dlgFactura">
+  <form method="dialog" id="formFactura">
+    <h2 id="dlgFacturaTitle">Factura de la distribuidora</h2>
+    <p class="hint">Copia estos datos de tu factura.</p>
+    <div class="grid2">
+      <label>Desde (fecha de lectura anterior)<input id="b_start" type="date" required></label>
+      <label>Hasta (fecha de lectura actual)<input id="b_end" type="date" required></label>
+      <label>kWh facturados<input id="b_kwh" type="text" inputmode="decimal" required></label>
+      <label>Monto del consumo (RD$)<input id="b_amount" type="text" inputmode="decimal" required></label>
+      <label>Lectura anterior (opcional)<input id="b_prev" type="text" inputmode="decimal"></label>
+      <label>Lectura actual (opcional)<input id="b_curr" type="text" inputmode="decimal"></label>
+    </div>
+    <p class="hint">En "monto" pon lo que cobran por la energía del mes (sin deudas atrasadas ni recargos), para que la comparación sea justa.</p>
+    <div class="row2">
+      <button type="button" id="btnCancelFactura" class="secondary">Cancelar</button>
+      <button type="submit" class="primary">Guardar</button>
+    </div>
+    <button type="button" id="btnDeleteFactura" class="danger" hidden>Borrar esta factura</button>
+  </form>
+</dialog>
+
+<script src="vendor/tesseract.min.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
