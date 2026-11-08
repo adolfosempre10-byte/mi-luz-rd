@@ -4,7 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mi Luz RD</title>
-<meta name="description" content="Mide tu consumo de luz con fotos del contador y compáralo con la factura.">
+<meta name="description" content="App gratis para verificar tu factura de luz en República Dominicana: fotos del contador, estimado del mes, comparación con la factura de Edesur, Edenorte o Edeeste e informe PDF para reclamar.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_DO">
+<meta property="og:site_name" content="Mi Luz RD">
+<meta property="og:title" content="Mi Luz RD: verifica tu factura de luz con fotos de tu contador">
+<meta property="og:description" content="Gratis y sin registrarte. Sabe cuánto vas a pagar, compara con la factura de tu distribuidora y saca un informe PDF para reclamar.">
+<meta property="og:url" content="https://adolfosempre10-byte.github.io/mi-luz-rd/">
+<meta property="og:image" content="https://adolfosempre10-byte.github.io/mi-luz-rd/icons/vista-previa.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#155e75">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
@@ -23,6 +33,18 @@
 <main>
   <!-- INICIO -->
   <section id="v-inicio" class="view active">
+    <div class="card welcome" id="welcome" hidden>
+      <h3>⚡ ¿Para qué sirve Mi Luz RD?</h3>
+      <p>Para que sepas cuánta luz gastas de verdad y no pagues de más.</p>
+      <ol>
+        <li><b>Le tomas una foto al contador</b> (mejor una vez al día). La app lee el número.</li>
+        <li>Te dice <b>cuánto llevas gastado y cuánto vas a pagar</b> en el mes, con la tarifa oficial.</li>
+        <li>Cuando llega la factura, la subes (foto, PDF o correo) y la app <b>la compara con tus fotos</b>.</li>
+        <li>Si te cobraron de más, te hace un <b>informe PDF con las fotos</b> para reclamar en la distribuidora o en Protecom.</li>
+      </ol>
+      <p class="hint">Es gratis, no pide registrarte y tus fotos se quedan en tu teléfono. No pertenece a ninguna distribuidora ni al gobierno.</p>
+      <button class="primary" id="btnWelcomeOk" type="button">Entendido, empezar</button>
+    </div>
     <div class="period-nav">
       <button id="prevP" class="icon-btn" aria-label="Período anterior">‹</button>
       <div id="periodLabel" class="period-label"></div>
@@ -146,6 +168,13 @@
       <button id="btnWipe" class="danger">Borrar todos los datos</button>
     </div>
 
+    <div class="card">
+      <h3>Acerca de Mi Luz RD</h3>
+      <p class="hint">App gratis e independiente para verificar el consumo y la factura de luz en República Dominicana. No pertenece a Edesur, Edenorte, Edeeste ni a la SIE. Las cuentas son una ayuda: la reclamación oficial se hace en la distribuidora o en Protecom.</p>
+      <p class="hint">Privacidad: tus fotos, lecturas y facturas se guardan solo en este teléfono. La app no las envía a ningún lado.</p>
+      <button class="secondary" id="btnShowWelcome" type="button">❓ ¿Para qué sirve?</button>
+      <button class="primary" id="btnShareApp" type="button">📤 Compartir la app con familia y amigos</button>
+    </div>
     <div class="card" id="installCard">
       <h3>Instalar en el teléfono</h3>
       <button id="btnInstall" class="secondary" hidden>📲 Instalar la app</button>

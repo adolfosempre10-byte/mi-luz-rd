@@ -69,3 +69,5 @@ la dirección que aparece en la ventana negra (algo como `http://192.168.1.20:80
 - `historial.js`: botón de la Oficina Virtual con el NIC, revisión del historial de facturas e informe PDF del historial.
 - `vendor/`: el lector de números (Tesseract.js, Apache 2.0), el lector de PDF (pdf.js, Apache 2.0) y el creador de PDF (jsPDF, MIT).
 - `servidor.js`, `Abrir-Mi-Luz.bat`: para abrirla desde la computadora.
+- `promocion/`: imágenes para anuncios (cuadrada e historia), código QR y textos listos (`ANUNCIOS.md`).
+- `icons/vista-previa.png`: la imagen que sale al compartir el enlace en WhatsApp o Facebook.

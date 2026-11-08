@@ -136,6 +136,10 @@ button, .file-btn {
 .bill .title button { width: auto; margin: 0; padding: 4px 10px; font-size: .85rem; }
 
 .estimate p { margin: 6px 0; }
+.welcome { border-left: 4px solid var(--accent); }
+.welcome p { margin: 6px 0; }
+.welcome ol { margin: 8px 0; padding-left: 22px; }
+.welcome li { margin: 6px 0; }
 textarea { display: block; width: 100%; font: inherit; font-size: .95rem; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 6px; }
 .bill-attach { display: flex; gap: 12px; align-items: center; margin: 8px 0; }
 .bill-attach img { width: 84px; height: 110px; object-fit: cover; object-position: top; border-radius: 8px; border: 1px solid var(--line); background: #fff; flex: none; }

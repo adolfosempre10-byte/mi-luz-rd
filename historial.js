@@ -295,7 +295,23 @@ function nextQueuedBill() {
 }
 
 // ---------- Inicio ----------
+// ---------- Explicación y compartir ----------
+const APP_URL = 'https://adolfosempre10-byte.github.io/mi-luz-rd/';
+async function shareApp() {
+  const text = '⚡ Mi Luz RD: app gratis para verificar tu factura de luz con fotos de tu contador. Te dice cuánto vas a pagar y si te cobraron de más.';
+  if (navigator.share) { try { await navigator.share({ title: 'Mi Luz RD', text, url: APP_URL }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + APP_URL), '_blank', 'noopener');
+}
+function initWelcome() {
+  const w = $('#welcome');
+  if (!state.settings.welcomeSeen && !state.readings.length) w.hidden = false;
+  $('#btnWelcomeOk').addEventListener('click', async () => { w.hidden = true; state.settings.welcomeSeen = true; await saveSettings(); });
+  $('#btnShowWelcome').addEventListener('click', () => { w.hidden = false; showView('inicio'); });
+  $('#btnShareApp').addEventListener('click', shareApp);
+}
+
 function initHistorial() {
+  initWelcome();
   $('#h_nic').addEventListener('change', async (e) => {
     state.settings.ownerNic = e.target.value.trim(); await saveSettings(); renderSettings();
   });
