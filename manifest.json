@@ -9,6 +9,17 @@
   "orientation": "portrait",
   "background_color": "#f1f5f9",
   "theme_color": "#155e75",
+  "share_target": {
+    "action": "./compartir",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "titulo",
+      "text": "texto",
+      "url": "enlace",
+      "files": [{ "name": "archivo", "accept": ["application/pdf", "image/*", ".pdf"] }]
+    }
+  },
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },

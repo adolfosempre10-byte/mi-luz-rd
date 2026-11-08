@@ -24,8 +24,15 @@ Es un proyecto aparte: no tiene nada que ver con el sistema de gestión de S&M S
 
   Fuente: Resolución **SIE-121-2026-TF** de la Superintendencia de Electricidad (tarifas de octubre a diciembre de 2026, página 8).
   La SIE la revisa cada 3 meses. Si cambia, se corrige en **Ajustes**.
-- **Comparar con la factura**: anotas los kWh y el monto de la factura, y la app te dice si te cobraron más de lo que mediste,
-  si el monto no cuadra con la tarifa, o si la lectura de la factura parece estimada.
+- **Comparar con la factura**: subes la factura (foto, PDF del correo, o el texto del correo pegado) y la app saca sola
+  las fechas, los kWh, el monto y las lecturas; tú revisas y corriges. En Android también se puede tocar "Compartir" en el PDF
+  del correo y elegir Mi Luz RD. La app te dice si te cobraron más de lo que mediste, si el monto no cuadra con la tarifa,
+  o si la lectura de la factura parece estimada.
+- **Informe PDF**: con un toque arma un PDF con tus datos (nombre, NIC, dirección), lo que debiste pagar según el contador,
+  lo que cobró la distribuidora, la diferencia, el cálculo con la tarifa, la lista de fotos con fecha y hora, las fotos del
+  contador y la factura. Sirve para llevarlo a la reclamación en la oficina de la distribuidora o a Protecom.
+- **Calculadora**: eliges dos fotos del contador (o escribes las lecturas), pones lo que te cobraron y te dice cuánto debías
+  pagar y cuánto te cobraron de más; también arma el informe PDF con esas fotos.
 - Todo se guarda **en el teléfono**. En Ajustes puedes guardar una copia (archivo) para no perder las fotos si cambias de teléfono.
 
 ## Probarla en la computadora
@@ -52,5 +59,6 @@ la dirección que aparece en la ventana negra (algo como `http://192.168.1.20:80
 
 - `index.html`, `styles.css`, `app.js`: la app.
 - `sw.js`, `manifest.json`, `icons/`: para instalarla y que funcione sin internet.
-- `vendor/`: el lector de números (Tesseract.js, licencia Apache 2.0).
+- `informe.js`: leer la factura, informe PDF y calculadora.
+- `vendor/`: el lector de números (Tesseract.js, Apache 2.0), el lector de PDF (pdf.js, Apache 2.0) y el creador de PDF (jsPDF, MIT).
 - `servidor.js`, `Abrir-Mi-Luz.bat`: para abrirla desde la computadora.

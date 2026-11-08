@@ -55,8 +55,47 @@
     <div id="billsList"></div>
   </section>
 
+  <!-- CALCULADORA -->
+  <section id="v-calc" class="view">
+    <div class="card info">
+      Elige dos fotos del contador. La app calcula cuánto debes pagar con la tarifa oficial y, si escribes lo que te cobró la distribuidora, cuánto te cobraron de más. Las fotos quedan como evidencia en el informe PDF.
+    </div>
+    <div class="card">
+      <h3>Lectura inicial</h3>
+      <select id="c_start"></select>
+      <div id="c_startManual" class="grid2" hidden>
+        <label>Lectura<input id="c_startVal" type="text" inputmode="decimal"></label>
+        <label>Fecha<input id="c_startDate" type="datetime-local" autocomplete="off"></label>
+      </div>
+      <img id="c_startImg" class="calc-img" alt="Foto de la lectura inicial" hidden>
+      <h3 style="margin-top:14px">Lectura final</h3>
+      <select id="c_end"></select>
+      <div id="c_endManual" class="grid2" hidden>
+        <label>Lectura<input id="c_endVal" type="text" inputmode="decimal"></label>
+        <label>Fecha<input id="c_endDate" type="datetime-local" autocomplete="off"></label>
+      </div>
+      <img id="c_endImg" class="calc-img" alt="Foto de la lectura final" hidden>
+    </div>
+    <div id="c_result"></div>
+    <div class="card">
+      <h3>Lo que te cobró la distribuidora</h3>
+      <div class="grid2">
+        <label>Monto cobrado (RD$)<input id="c_billAmount" type="text" inputmode="decimal" placeholder="Ej. 3500"></label>
+        <label>kWh cobrados (opcional)<input id="c_billKwh" type="text" inputmode="decimal"></label>
+      </div>
+      <div id="c_diff"></div>
+    </div>
+    <button class="big" id="btnCalcPdf">📄 Hacer informe PDF con las fotos</button>
+  </section>
+
   <!-- AJUSTES -->
   <section id="v-ajustes" class="view">
+    <div class="card">
+      <h3>Mis datos (salen en el informe PDF)</h3>
+      <label>Nombre del titular<input id="ownerName" type="text" autocomplete="name"></label>
+      <label>NIC o número de contrato<input id="ownerNic" type="text" inputmode="numeric"></label>
+      <label>Dirección<input id="ownerAddress" type="text" autocomplete="street-address"></label>
+    </div>
     <div class="card">
       <h3>Mi factura</h3>
       <label>Día de corte de la factura
@@ -112,6 +151,7 @@
   <button data-view="inicio" class="active"><span>🏠</span>Inicio</button>
   <button data-view="lecturas"><span>📷</span>Lecturas</button>
   <button data-view="facturas"><span>🧾</span>Facturas</button>
+  <button data-view="calc"><span>🧮</span>Calcular</button>
   <button data-view="ajustes"><span>⚙️</span>Ajustes</button>
 </nav>
 
@@ -155,7 +195,23 @@
 <dialog id="dlgFactura">
   <form method="dialog" id="formFactura">
     <h2 id="dlgFacturaTitle">Factura de la distribuidora</h2>
-    <p class="hint">Copia estos datos de tu factura.</p>
+    <div class="row2">
+      <label class="primary file-btn">📎 Subir factura (foto o PDF)
+        <input id="billFile" type="file" accept="image/*,application/pdf,.pdf" hidden>
+      </label>
+      <button type="button" id="btnPasteBill" class="secondary">📋 Pegar texto del correo</button>
+    </div>
+    <p class="hint">¿Te llegó por correo? Abre el correo, descarga el PDF adjunto y súbelo aquí. En Android también puedes tocar "Compartir" en el PDF y elegir Mi Luz RD.</p>
+    <div id="pasteArea" hidden>
+      <textarea id="billText" rows="6" placeholder="Copia todo el texto del correo de la factura y pégalo aquí"></textarea>
+      <button type="button" id="btnParseText" class="secondary">Leer este texto</button>
+    </div>
+    <div id="billAttach" class="bill-attach" hidden>
+      <img id="billAttachImg" alt="Factura">
+      <div><p id="billAttachName" class="hint"></p><button type="button" id="btnRemoveAttach" class="danger small">Quitar</button></div>
+    </div>
+    <p id="billStatus" class="status"></p>
+    <p class="hint">Revisa los datos (los puedes corregir):</p>
     <div class="grid2">
       <label>Desde (fecha de lectura anterior)<input id="b_start" type="date" required></label>
       <label>Hasta (fecha de lectura actual)<input id="b_end" type="date" required></label>
@@ -174,6 +230,9 @@
 </dialog>
 
 <script src="vendor/tesseract.min.js" defer></script>
+<script src="vendor/jspdf.umd.min.js" defer></script>
+<script src="vendor/pdfjs/pdf.min.js" defer></script>
 <script src="app.js" defer></script>
+<script src="informe.js" defer></script>
 </body>
 </html>

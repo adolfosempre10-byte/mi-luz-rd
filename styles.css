@@ -136,6 +136,17 @@ button, .file-btn {
 .bill .title button { width: auto; margin: 0; padding: 4px 10px; font-size: .85rem; }
 
 .estimate p { margin: 6px 0; }
+textarea { display: block; width: 100%; font: inherit; font-size: .95rem; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 6px; }
+.bill-attach { display: flex; gap: 12px; align-items: center; margin: 8px 0; }
+.bill-attach img { width: 84px; height: 110px; object-fit: cover; object-position: top; border-radius: 8px; border: 1px solid var(--line); background: #fff; flex: none; }
+.bill-attach > div { flex: 1; min-width: 0; }
+.bill-attach .hint { word-break: break-all; }
+button.small { width: auto; padding: 6px 14px; margin: 0; font-size: .85rem; }
+button:disabled { opacity: .5; cursor: default; }
+.calc-img { display: block; width: 100%; max-height: 200px; object-fit: contain; background: #000; border-radius: 10px; margin-top: 8px; }
+.big-alert { font-size: 1rem; text-align: center; padding: 14px; }
+.big-alert b { display: block; font-size: 1.9rem; margin: 4px 0; }
+.big-alert span { display: block; font-size: .85rem; }
 .estimate { border-left: 4px solid var(--accent); }
 table.daily { width: 100%; border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
 table.daily th { color: var(--muted); font-weight: 500; text-align: right; padding: 4px 2px; border-bottom: 1px solid var(--line); }
@@ -162,7 +173,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.15rem; }
 
 .tabs {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 5;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--card); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
 }

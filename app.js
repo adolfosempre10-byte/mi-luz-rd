@@ -377,7 +377,11 @@ function renderBills() {
     }
     return `<div class="card bill"><div class="title"><h3>${fmtDate(b.start)} → ${fmtDate(b.end, { day: 'numeric', month: 'short', year: 'numeric' })}</h3>
       <button class="secondary" data-edit-bill="${b.id}">Editar</button></div>
-      <div class="cmp">${rows.join('')}</div>${msgs.join('')}</div>`;
+      <div class="cmp">${rows.join('')}</div>${msgs.join('')}
+      <div class="row2">
+        <button class="primary" data-report-bill="${b.id}" ${mine == null ? 'disabled' : ''}>📄 Informe PDF</button>
+        ${b.attachment ? `<button class="secondary" data-view-bill="${b.id}">📎 Ver factura</button>` : ''}
+      </div></div>`;
   }).join('');
 }
 
@@ -389,6 +393,9 @@ function renderSettings() {
   for (const k of ['fixedLow', 'fixedHigh', 'r1', 'r2', 'r3', 'r4']) $('#t_' + k).value = s.tariff[k];
   $('#tariffSource').textContent = s.tariffSource ? `Valores de: ${s.tariffSource}.` : 'Tarifa personalizada (cambiada a mano).';
   $('#btnResetTariff').hidden = !OFFICIAL_TARIFFS[s.distributor];
+  $('#ownerName').value = s.ownerName || '';
+  $('#ownerNic').value = s.ownerNic || '';
+  $('#ownerAddress').value = s.ownerAddress || '';
 }
 function bindSettings() {
   $('#cutDay').addEventListener('change', async (e) => {
@@ -418,6 +425,9 @@ function bindSettings() {
     state.settings.tariff = { ...off }; state.settings.tariffSource = TARIFF_SOURCE;
     await saveSettings(); renderAll();
   });
+  for (const k of ['ownerName', 'ownerNic', 'ownerAddress']) {
+    $('#' + k).addEventListener('change', async (e) => { state.settings[k] = e.target.value.trim(); await saveSettings(); });
+  }
   $('#btnExport').addEventListener('click', exportData);
   $('#importFile').addEventListener('change', importData);
   $('#btnWipe').addEventListener('click', async () => {
@@ -432,7 +442,12 @@ const blobToDataURL = (b) => new Promise((res) => { const r = new FileReader(); 
 async function exportData() {
   const readings = [];
   for (const r of state.readings) readings.push({ ...r, photo: r.photo ? await blobToDataURL(r.photo) : null });
-  const data = { app: 'mi-luz-rd', version: 1, exportedAt: new Date().toISOString(), settings: state.settings, readings, bills: state.bills };
+  const bills = [];
+  for (const b of state.bills) {
+    const a = b.attachment;
+    bills.push({ ...b, attachment: a ? { ...a, blob: await blobToDataURL(a.blob), preview: a.preview ? await blobToDataURL(a.preview) : null } : null });
+  }
+  const data = { app: 'mi-luz-rd', version: 1, exportedAt: new Date().toISOString(), settings: state.settings, readings, bills };
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
   const name = `mi-luz-copia-${timeToDateOnly(Date.now())}.json`;
   const file = new File([blob], name, { type: 'application/json' });
@@ -455,7 +470,11 @@ async function importData(e) {
       const photo = r.photo ? await (await fetch(r.photo)).blob() : null;
       await DB.put('readings', { ...r, photo });
     }
-    for (const b of data.bills) await DB.put('bills', b);
+    for (const b of data.bills) {
+      const a = b.attachment;
+      const toBlob = async (u) => (u ? (await fetch(u)).blob() : null);
+      await DB.put('bills', { ...b, attachment: a ? { ...a, blob: await toBlob(a.blob), preview: await toBlob(a.preview) } : null });
+    }
     if (data.settings) await DB.put('kv', data.settings, 'settings');
     await loadAll(); renderAll();
     alert('Listo: datos recuperados.');
@@ -550,7 +569,7 @@ async function runOcr(img, rect, ctx) {
   const variants = makeVariants(img, rect);
   const cands = [];
   for (const v of variants) {
-    await w.setParameters({ tessedit_pageseg_mode: rect ? '7' : '11' });
+    await w.setParameters({ tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: rect ? '7' : '11' });
     const { data } = await w.recognize(v);
     if (rect) {
       const digits = (data.text || '').replace(/\D/g, '');
@@ -764,6 +783,10 @@ function openBillDialog(b = null) {
   $('#b_prev').value = b && b.prev != null ? b.prev : '';
   $('#b_curr').value = b && b.curr != null ? b.curr : '';
   $('#btnDeleteFactura').hidden = !b;
+  billState.attachment = b && b.attachment ? b.attachment : null;
+  showBillAttachment();
+  $('#pasteArea').hidden = true; $('#billText').value = '';
+  $('#billStatus').textContent = b ? '' : 'Sube la foto o el PDF de la factura y la app llena los datos. También puedes escribirlos.';
   $('#dlgFactura').showModal();
 }
 function bindBillDialog() {
@@ -776,6 +799,7 @@ function bindBillDialog() {
       start: dateOnlyToTime($('#b_start').value), end: dateOnlyToTime($('#b_end').value),
       kwh: parseNum($('#b_kwh').value), amount: parseNum($('#b_amount').value),
       prev: parseNum($('#b_prev').value), curr: parseNum($('#b_curr').value),
+      attachment: billState.attachment || null,
     };
     if (isNaN(b.prev)) b.prev = null;
     if (isNaN(b.curr)) b.curr = null;
@@ -791,9 +815,24 @@ function bindBillDialog() {
     d.close();
     await loadAll(); renderAll();
   });
-  $('#billsList').addEventListener('click', (e) => {
-    const id = e.target.dataset && e.target.dataset.editBill;
-    if (id) openBillDialog(state.bills.find((b) => b.id === id));
+  $('#billsList').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const ds = btn.dataset;
+    if (ds.editBill) openBillDialog(state.bills.find((b) => b.id === ds.editBill));
+    if (ds.viewBill) {
+      const a = state.bills.find((b) => b.id === ds.viewBill).attachment;
+      const url = URL.createObjectURL(a.blob);
+      const w = window.open(url, '_blank');
+      if (!w) { const l = document.createElement('a'); l.href = url; l.download = a.name || 'factura'; l.click(); }
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+    }
+    if (ds.reportBill) {
+      const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Preparando…';
+      try { await reportForBill(state.bills.find((b) => b.id === ds.reportBill)); }
+      catch (err) { console.error(err); alert('No se pudo hacer el PDF: ' + err.message); }
+      finally { btn.disabled = false; btn.textContent = old; }
+    }
   });
 }
 
@@ -803,7 +842,7 @@ function showView(name) {
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   window.scrollTo(0, 0);
 }
-function renderAll() { renderHome(); renderReadings(); renderBills(); renderSettings(); }
+function renderAll() { renderHome(); renderReadings(); renderBills(); renderSettings(); if (typeof renderCalc === 'function') renderCalc(); }
 
 // ---------- Inicio de la app ----------
 let deferredInstall = null;
@@ -823,6 +862,7 @@ async function main() {
   bindReadingDialog();
   bindBillDialog();
   bindSettings();
+  initInforme();
   renderAll();
 
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredInstall = e; $('#btnInstall').hidden = false; });
@@ -836,4 +876,7 @@ async function main() {
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW', e));
   }
 }
-main().catch((e) => { console.error(e); document.body.insertAdjacentHTML('afterbegin', `<p class="alert bad">Error al iniciar: ${esc(e.message)}</p>`); });
+// Los scripts "defer" corren antes de DOMContentLoaded: así informe.js ya está cargado al iniciar.
+document.addEventListener('DOMContentLoaded', () => {
+  main().catch((e) => { console.error(e); document.body.insertAdjacentHTML('afterbegin', `<p class="alert bad">Error al iniciar: ${esc(e.message)}</p>`); });
+});
