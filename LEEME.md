@@ -11,6 +11,8 @@ Es un proyecto aparte: no tiene nada que ver con el sistema de gestión de S&M S
   lo gastado hasta hoy, el promedio por día y cuánto vas a gastar al cierre.
 - **Estimado del mes**: con dos fotos o más te dice "gastas X kWh por día; si sigues así, el mes completo serán Y kWh y pagarás unos RD$ Z",
   y si tu consumo es parejo (estimado confiable) o cambia mucho. Abajo hay una tabla día a día con lo que subió el contador y la suma acumulada del mes.
+- **Mi factura calculada (PDF)**: en Inicio, un botón saca la factura que te corresponde según tus fotos del contador
+  (lo gastado hasta la última foto y la factura estimada al corte), sin entrar a la página de la distribuidora.
 - **Costo en pesos** con la tarifa residencial **BTS-1**:
 
   | Concepto | Edesur | Edenorte | Edeeste |

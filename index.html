@@ -71,17 +71,17 @@
   <!-- FACTURAS -->
   <section id="v-facturas" class="view">
     <div class="card info">
-      Anota lo que dice tu factura de la distribuidora y la app lo compara con tus propias fotos del contador.
+      <b>Lo más fácil:</b> cuando le llegue la factura de papel, tóquele "Anotar una factura" y <b>tómele una foto</b>. La app lee los datos y la compara con sus fotos del contador. No hace falta entrar a la página de la distribuidora.
     </div>
     <button class="big" id="btnFactura">🧾 Anotar una factura</button>
-    <div class="card">
-      <h3>🔎 Mis facturas en la distribuidora</h3>
+    <details class="card">
+      <summary><b>🔎 Otra opción: bajar las facturas de la Oficina Virtual</b></summary>
       <label>Su NIC (el número de cliente que sale en la factura)<input id="h_nic" type="text" inputmode="numeric" autocomplete="off"></label>
       <button class="secondary" id="btnPortal" type="button">🔎 Abrir la Oficina Virtual</button>
       <p id="portalStatus" class="status"></p>
       <p class="hint">Las distribuidoras no dejan ver la factura con solo el NIC: en su Oficina Virtual hay que entrar con usuario y contraseña (si no tiene, se registra ahí con su NIC). La app no entra por usted ni guarda su contraseña.
       Dentro, busque <b>Historial de facturas</b>, descargue los PDF de los últimos meses y súbalos aquí con "Anotar una factura" (puede elegir varios a la vez). Si solo ve una tabla de consumos, anote cada mes a mano.</p>
-    </div>
+    </details>
     <div id="history"></div>
     <div id="billsList"></div>
   </section>
@@ -234,7 +234,7 @@
   <form method="dialog" id="formFactura">
     <h2 id="dlgFacturaTitle">Factura de la distribuidora</h2>
     <div class="row2">
-      <label class="primary file-btn">📎 Subir factura (foto o PDF, una o varias)
+      <label class="primary file-btn">📷 Foto de la factura o PDF
         <input id="billFile" type="file" accept="image/*,application/pdf,.pdf" hidden>
       </label>
       <button type="button" id="btnPasteBill" class="secondary">📋 Pegar texto del correo</button>

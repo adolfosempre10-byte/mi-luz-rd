@@ -219,6 +219,8 @@ function renderHome() {
         </details>
       </div>
     </div>
+    <button class="big" id="btnMyBill" type="button">🧾 Sacar mi factura calculada (PDF)</button>
+    <p class="hint" style="text-align:center;margin-top:-4px">Sale de tus fotos del contador, sin entrar a la página de la distribuidora.</p>
     ${estimateCard(st, end, p)}
     ${alerts}
     ${lastR ? `<p class="hint">Última lectura: <b>${fmtN(lastR.value, lastR.value % 1 ? 1 : 0)}</b> el ${fmtDateTime(lastR.time)}</p>` : ''}`;

@@ -1,6 +1,6 @@
 // Guarda la app en el teléfono para que funcione sin internet.
 // Al cambiar cualquier archivo de vendor/, sube el número de versión.
-const VERSION = 'mi-luz-v4';
+const VERSION = 'mi-luz-v5';
 const SHARED = 'mi-luz-compartido';
 const FILES = [
   './', 'index.html', 'styles.css', 'app.js', 'informe.js', 'historial.js', 'manifest.json',

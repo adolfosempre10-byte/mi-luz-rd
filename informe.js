@@ -345,9 +345,9 @@ async function makePdf(rep) {
   // --- Encabezado ---
   doc.setFillColor(...brand); doc.rect(0, 0, W, 26, 'F');
   doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
-  T('Informe de consumo eléctrico', M, 12);
+  T(rep.title || 'Informe de consumo eléctrico', M, 12);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-  T('Verificación de la factura con fotos del contador', M, 19);
+  T(rep.subtitle || 'Verificación de la factura con fotos del contador', M, 19);
   T('Generado el ' + fmtStamp(rep.created), W - M, 19, { align: 'right' });
   y = 35;
 
@@ -366,7 +366,7 @@ async function makePdf(rep) {
 
   // --- Resumen ---
   const b = rep.billed;
-  const boxH = b && b.amount != null ? 38 : 24;
+  const boxH = b && b.amount != null ? 38 : rep.projection ? 32 : 24;
   doc.setFillColor(245, 248, 250); doc.setDrawColor(...brand); doc.setLineWidth(0.5); doc.roundedRect(M, y, W - 2 * M, boxH, 2, 2, 'FD');
   let by = y + 8;
   const line = (label, value, color = [30, 30, 30], big = false) => {
@@ -374,7 +374,10 @@ async function makePdf(rep) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(big ? 14 : 11.5); doc.setTextColor(...color); T(value, W - M - 5, by, { align: 'right' });
     by += big ? 10 : 8;
   };
-  line('Según las fotos del contador, debió pagar:', `${fmtRD(rep.cost.total)}  (${fmtN(rep.measured)} kWh)`);
+  if (rep.projection) {
+    line(`Gastado según las fotos (al ${fmtDate(rep.end.time)}):`, `${fmtRD(rep.cost.total)}  (${fmtN(rep.measured)} kWh)`);
+    line(`Factura estimada al corte del ${fmtLong(rep.projection.end)}:`, `${fmtRD(rep.projection.cost.total)}  (${fmtN(rep.projection.kwh)} kWh)`, [21, 94, 117], true);
+  } else line(rep.title ? 'Según las fotos del contador, le corresponde pagar:' : 'Según las fotos del contador, debió pagar:', `${fmtRD(rep.cost.total)}  (${fmtN(rep.measured)} kWh)`);
   if (b && b.amount != null) {
     line('La distribuidora cobró:', `${fmtRD(b.amount)}${b.kwh != null ? `  (${fmtN(b.kwh)} kWh)` : ''}`);
     const diff = b.amount - rep.cost.total;
@@ -401,7 +404,11 @@ async function makePdf(rep) {
   // --- Cálculo ---
   h2('Cálculo con la tarifa BTS-1');
   para('Precios por escalón de consumo: 0-200 kWh, 201-300 kWh y 301-700 kWh. Si el consumo pasa de 700 kWh, todos los kWh se cobran al precio del último escalón. El cargo fijo depende de si el consumo es de hasta 100 kWh o mayor.', 8.5);
-  table(['Consumo medido con las fotos', 'RD$'], rep.cost.lines.map(([k, v]) => [k, fmtN(v, 2)]).concat([{ cells: ['Total que debió pagar', fmtN(rep.cost.total, 2)], bold: true }]), [150, 34], { right: [1] });
+  table(['Consumo medido con las fotos', 'RD$'], rep.cost.lines.map(([k, v]) => [k, fmtN(v, 2)]).concat([{ cells: [rep.projection ? 'Total de lo gastado hasta la última foto' : rep.title ? 'Total que le corresponde pagar' : 'Total que debió pagar', fmtN(rep.cost.total, 2)], bold: true }]), [150, 34], { right: [1] });
+  if (rep.projection) {
+    para(`Proyección: el promedio medido (${fmtN(rep.measured / Math.max(0.01, (rep.end.time - rep.start.time) / DAY), 1)} kWh por día) se aplica a todo el período de facturación (${fmtLong(rep.projection.start)} al ${fmtLong(rep.projection.end)}).`, 8.5);
+    table([`Factura estimada para ${fmtN(rep.projection.kwh)} kWh`, 'RD$'], rep.projection.cost.lines.map(([k, v]) => [k, fmtN(v, 2)]).concat([{ cells: ['Total estimado al corte', fmtN(rep.projection.cost.total, 2)], bold: true }]), [150, 34], { right: [1] });
+  }
   if (rep.billedCost && b) {
     table([`Lo que corresponde a los ${fmtN(b.kwh)} kWh de la factura`, 'RD$'], rep.billedCost.lines.map(([k, v]) => [k, fmtN(v, 2)]).concat([{ cells: ['Total según tarifa', fmtN(rep.billedCost.total, 2)], bold: true }]), [150, 34], { right: [1] });
     const extra = b.amount - rep.billedCost.total;
@@ -587,7 +594,24 @@ function initCalc() {
   $('#btnCalcPdf').addEventListener('click', calcPdf);
 }
 
+// Factura calculada solo con las fotos (sin la factura de la distribuidora).
+async function myBillPdf(btn) {
+  const { start, end } = periodFor(state.periodOffset);
+  const st = periodStats(start, end);
+  if (!st.ok) { alert('Necesitas al menos dos fotos del contador en este período.'); return; }
+  const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Preparando…';
+  try {
+    const rep = buildReport({ start: pointFromTime(st.tb), end: pointFromTime(st.te) });
+    rep.title = 'Mi factura calculada';
+    rep.subtitle = 'Calculada con las fotos del contador y la tarifa oficial BTS-1';
+    if (!st.complete) rep.projection = { kwh: st.projected, cost: costOf(st.projected), start, end };
+    await deliverPdf(await makePdf(rep), `mi-factura-luz-${timeToDateOnly(start)}-a-${timeToDateOnly(end)}.pdf`);
+  } catch (e) { console.error(e); alert('No se pudo hacer el PDF: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+
 function initInforme() {
+  $('#summary').addEventListener('click', (e) => { const b = e.target.closest('#btnMyBill'); if (b) myBillPdf(b); });
   initBillImport();
   initCalc();
   if (typeof initHistorial === 'function') initHistorial();

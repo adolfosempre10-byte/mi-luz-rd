@@ -195,3 +195,4 @@ dialog h2 { margin: 0 0 6px; font-size: 1.15rem; }
 .hist-row.warn .hbar i { background: var(--warn); }
 .hist-row .hv { text-align: right; font-size: .85rem; font-variant-numeric: tabular-nums; }
 .hist-row .hv small { color: var(--muted); }
+details.card > summary { cursor: pointer; padding: 2px 0; }
