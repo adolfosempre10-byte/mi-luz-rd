@@ -34,14 +34,19 @@ Doble clic en `Abrir-Mi-Luz.bat`. Se abre en el navegador. Deja la ventana negra
 
 ## Abrirla en el celular
 
-**Para probar rápido (mismo WiFi):** abre `Abrir-Mi-Luz.bat` en la computadora y, en el celular conectado al mismo WiFi,
-escribe en Chrome la dirección que aparece en la ventana negra (algo como `http://192.168.1.20:8090`).
-Si Windows pregunta si deja pasar a "Node.js", dile que sí (red privada).
-Así funciona solo mientras la computadora esté prendida con la ventana abierta.
+La app está publicada en **https://adolfosempre10-byte.github.io/mi-luz-rd/**
 
-**Para usarla todos los días (recomendado):** hay que subir esta carpeta a una página gratis con `https`
-(por ejemplo GitHub Pages o Netlify). Después se abre esa dirección en el celular una sola vez, se instala en la pantalla de inicio
-y ya funciona sin internet y sin la computadora. Lo que se sube es solo la app; tus fotos y lecturas nunca salen del teléfono.
+1. Abre esa dirección en el celular (Chrome en Android, Safari en iPhone), con internet, una sola vez.
+2. Instálala: Android → menú ⋮ → "Instalar app" o "Agregar a la pantalla principal". iPhone → botón Compartir → "Agregar a inicio".
+3. Desde el ícono ⚡ "Mi Luz RD" funciona sin internet y sin la computadora.
+
+Lo publicado es solo la app; tus fotos y lecturas nunca salen del teléfono.
+
+**Para actualizarla:** se cambian los archivos de esta carpeta, se sube el número `VERSION` en `sw.js` si cambió algo de `vendor/`,
+y se hace commit y push a `github.com/adolfosempre10-byte/mi-luz-rd` (GitHub Pages la publica sola en un minuto).
+
+**Sin internet en la computadora (mismo WiFi):** también se puede abrir con `Abrir-Mi-Luz.bat` y, en el celular,
+la dirección que aparece en la ventana negra (algo como `http://192.168.1.20:8090`). Así solo funciona mientras la computadora esté prendida.
 
 ## Archivos
 
