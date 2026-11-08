@@ -230,7 +230,7 @@ function showBillAttachment() {
 }
 
 function initBillImport() {
-  $('#billFile').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) handleBillFile(f); });
+  $('#billFile').addEventListener('change', (e) => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length > 1 && typeof startBillQueue === 'function') startBillQueue(fs); else if (fs[0]) handleBillFile(fs[0]); });
   $('#btnPasteBill').addEventListener('click', () => { $('#pasteArea').hidden = !$('#pasteArea').hidden; if (!$('#pasteArea').hidden) $('#billText').focus(); });
   $('#btnParseText').addEventListener('click', () => {
     const t = $('#billText').value;
@@ -267,7 +267,7 @@ async function checkSharedFile() {
 // ======================================================================
 // 2) INFORME PDF CON EVIDENCIA
 // ======================================================================
-const pdfTxt = (s) => String(s).replace(/[   ]/g, ' ').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[^\x00-\xFF]/g, '');
+const pdfTxt = (s) => String(s).replace(/[   ]/g, ' ').replace(/[–—−]/g, '-').replace(/…/g, '...').replace(/[^\x00-\xFF]/g, '');
 const fmtLong = (t) => new Date(t).toLocaleDateString('es-DO', { day: 'numeric', month: 'long', year: 'numeric' });
 const fmtStamp = (t) => new Date(t).toLocaleString('es-DO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -590,5 +590,6 @@ function initCalc() {
 function initInforme() {
   initBillImport();
   initCalc();
+  if (typeof initHistorial === 'function') initHistorial();
   checkSharedFile();
 }

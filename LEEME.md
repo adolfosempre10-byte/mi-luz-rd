@@ -33,6 +33,12 @@ Es un proyecto aparte: no tiene nada que ver con el sistema de gestión de S&M S
   contador y la factura. Sirve para llevarlo a la reclamación en la oficina de la distribuidora o a Protecom.
 - **Calculadora**: eliges dos fotos del contador (o escribes las lecturas), pones lo que te cobraron y te dice cuánto debías
   pagar y cuánto te cobraron de más; también arma el informe PDF con esas fotos.
+- **Historial de facturas** (pestaña Facturas): pones tu NIC y un botón lo copia y abre la Oficina Virtual de tu distribuidora.
+  Ahí entras con tu usuario (Edesur, Edenorte y Edeeste no dejan ver la factura con solo el NIC), descargas los PDF de los meses
+  pasados y los subes todos juntos; la app los va abriendo uno por uno para que los revises. Con 2 facturas o más, la app revisa
+  el historial: kWh que no salen de las lecturas, lecturas que se repiten de una factura a otra (kWh cobrados dos veces), días
+  repetidos, meses muy altos después de un mes muy bajo (lectura estimada y luego acumulada) y montos que no cuadran con la tarifa.
+  Te dice el posible cobro de más y arma un informe PDF del historial.
 - Todo se guarda **en el teléfono**. En Ajustes puedes guardar una copia (archivo) para no perder las fotos si cambias de teléfono.
 
 ## Probarla en la computadora
@@ -60,5 +66,6 @@ la dirección que aparece en la ventana negra (algo como `http://192.168.1.20:80
 - `index.html`, `styles.css`, `app.js`: la app.
 - `sw.js`, `manifest.json`, `icons/`: para instalarla y que funcione sin internet.
 - `informe.js`: leer la factura, informe PDF y calculadora.
+- `historial.js`: botón de la Oficina Virtual con el NIC, revisión del historial de facturas e informe PDF del historial.
 - `vendor/`: el lector de números (Tesseract.js, Apache 2.0), el lector de PDF (pdf.js, Apache 2.0) y el creador de PDF (jsPDF, MIT).
 - `servidor.js`, `Abrir-Mi-Luz.bat`: para abrirla desde la computadora.

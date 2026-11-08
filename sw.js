@@ -1,9 +1,9 @@
 // Guarda la app en el teléfono para que funcione sin internet.
 // Al cambiar cualquier archivo de vendor/, sube el número de versión.
-const VERSION = 'mi-luz-v2';
+const VERSION = 'mi-luz-v3';
 const SHARED = 'mi-luz-compartido';
 const FILES = [
-  './', 'index.html', 'styles.css', 'app.js', 'informe.js', 'manifest.json',
+  './', 'index.html', 'styles.css', 'app.js', 'informe.js', 'historial.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png',
   'vendor/tesseract.min.js', 'vendor/worker.min.js',
   'vendor/core/tesseract-core-lstm.wasm.js', 'vendor/core/tesseract-core-simd-lstm.wasm.js',

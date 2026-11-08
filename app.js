@@ -426,7 +426,7 @@ function bindSettings() {
     await saveSettings(); renderAll();
   });
   for (const k of ['ownerName', 'ownerNic', 'ownerAddress']) {
-    $('#' + k).addEventListener('change', async (e) => { state.settings[k] = e.target.value.trim(); await saveSettings(); });
+    $('#' + k).addEventListener('change', async (e) => { state.settings[k] = e.target.value.trim(); await saveSettings(); if (typeof renderPortal === 'function') renderPortal(); });
   }
   $('#btnExport').addEventListener('click', exportData);
   $('#importFile').addEventListener('change', importData);
@@ -791,7 +791,7 @@ function openBillDialog(b = null) {
 }
 function bindBillDialog() {
   const d = $('#dlgFactura');
-  $('#btnCancelFactura').addEventListener('click', () => d.close());
+  $('#btnCancelFactura').addEventListener('click', () => { billState.queue = []; billState.queueTotal = 0; d.close(); });
   $('#formFactura').addEventListener('submit', async (e) => {
     e.preventDefault();
     const b = {
@@ -808,6 +808,7 @@ function bindBillDialog() {
     await DB.put('bills', b);
     d.close();
     await loadAll(); renderAll();
+    if (typeof nextQueuedBill === 'function') nextQueuedBill(); // varias facturas subidas a la vez
   });
   $('#btnDeleteFactura').addEventListener('click', async () => {
     if (!editingBill || !confirm('¿Borrar esta factura?')) return;
@@ -842,7 +843,7 @@ function showView(name) {
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   window.scrollTo(0, 0);
 }
-function renderAll() { renderHome(); renderReadings(); renderBills(); renderSettings(); if (typeof renderCalc === 'function') renderCalc(); }
+function renderAll() { renderHome(); renderReadings(); renderBills(); renderSettings(); if (typeof renderCalc === 'function') renderCalc(); if (typeof renderHistory === 'function') renderHistory(); }
 
 // ---------- Inicio de la app ----------
 let deferredInstall = null;
