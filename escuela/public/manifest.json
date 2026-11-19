@@ -1,0 +1,12 @@
+{
+  "name": "Registro Escolar",
+  "short_name": "Registro",
+  "description": "Calificaciones, asistencia y boletines del centro educativo.",
+  "lang": "es-DO",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#1e3a8a",
+  "icons": [{ "src": "icono.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
