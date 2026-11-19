@@ -147,6 +147,7 @@ function pantallaConfigurar() {
     <div class="entrada"><div class="tarjeta" style="width:min(480px,100%)">
       <h1>📘 Bienvenido al Registro Escolar</h1>
       <p>Primero crea la cuenta de la <b>dirección</b> del centro. Con ella vas a registrar los cursos, los docentes y los estudiantes.</p>
+      <label>Código de instalación<input id="codigo" inputmode="numeric" required placeholder="Lo muestra la ventana negra del servidor"></label>
       <form id="fConf">
         <label>Nombre del centro educativo<input name="centro" required></label>
         <label>Tu nombre<input name="nombre" required placeholder="Ej.: Lic. Juana Pérez"></label>
@@ -163,6 +164,7 @@ function pantallaConfigurar() {
   $('#fConf').onsubmit = async ev => {
     ev.preventDefault();
     const f = Object.fromEntries(new FormData(ev.target));
+    f.codigo = $('#codigo').value;
     await intentar(async () => {
       await llamar('POST', '/api/configurar', f);
       await llamar('POST', '/api/entrar', { usuario: f.usuario, clave: f.clave });
@@ -170,7 +172,7 @@ function pantallaConfigurar() {
     });
   };
   $('#ejemplo').onclick = () => intentar(async () => {
-    await llamar('POST', '/api/configurar', { ejemplo: true });
+    await llamar('POST', '/api/configurar', { ejemplo: true, codigo: $('#codigo').value });
     S.nombreCentro = 'Centro Educativo Ejemplo';
     pantallaEntrada('Datos de ejemplo cargados. Entra como dirección: usuario «direccion», clave «direccion123». Docentes: «lperez» / «docente123». Familia: «familia» / «familia123».');
   });

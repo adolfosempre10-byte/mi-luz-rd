@@ -54,8 +54,10 @@ No hace falta instalar nada más ni tener internet.
    ventana negra en «Otras computadoras y celulares» (por ejemplo `http://192.168.1.20:8091`).
 4. Deja la ventana negra abierta mientras se use el sistema.
 
-Para que las familias lo vean desde su casa, el servidor tiene que estar en internet (un servidor en la nube o
-un VPS con HTTPS). El programa es el mismo; solo cambia dónde corre.
+La primera vez, la ventana negra muestra un **código de instalación** que se pide al configurar el sistema.
+
+Para que las familias lo vean desde su casa, sigue la guía [despliegue/PONERLO-EN-INTERNET.md](despliegue/PONERLO-EN-INTERNET.md):
+se alquila un servidor (unos US$5–6 al mes) y se instala con un solo comando, con HTTPS incluido.
 
 ## Dónde quedan los datos
 

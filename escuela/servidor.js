@@ -10,6 +10,10 @@ const crypto = require('crypto');
 const { crearDatosDeEjemplo, centroPorDefecto } = require('./demo');
 
 const PORT = Number(process.env.PORT) || 8091;
+// En internet el sistema va detrás de un proxy con HTTPS (Caddy o Cloudflare Tunnel): PROXY=1.
+// Así se usa la IP real de cada visitante y la cookie de sesión solo viaja por HTTPS.
+const PROXY = process.env.PROXY === '1';
+const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC = path.join(__dirname, 'public');
 const DATOS = process.env.DATOS_DIR || path.join(__dirname, 'datos');
 const ARCHIVO = path.join(DATOS, 'escuela.json');
@@ -86,6 +90,18 @@ function usuarioDe(req) {
   const u = db.usuarios.find(x => x.id === s.uid);
   return u && u.activo !== false ? u : null;
 }
+// Código que se pide para la configuración inicial, así nadie más la hace antes que el centro.
+const codigoInstalacion = String(crypto.randomInt(100000, 1000000));
+function ipDe(req) {
+  if (PROXY) {
+    const cf = req.headers['cf-connecting-ip'];
+    if (cf) return String(cf).trim();
+    const xff = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
+    if (xff.length) return xff[xff.length - 1];
+  }
+  return req.socket.remoteAddress;
+}
+const esHttps = req => PROXY && (String(req.headers['x-forwarded-proto'] || '').startsWith('https') || !!req.headers['cf-connecting-ip']);
 // Freno simple contra adivinar claves.
 const intentos = new Map();
 function bloqueado(ip) {
@@ -248,14 +264,16 @@ function periodoDeCampo(campo) {
 // ---------- API ----------
 async function api(req, res, ruta) {
   const metodo = req.method;
-  const ip = req.socket.remoteAddress;
+  const ip = ipDe(req);
 
   if (ruta === '/api/estado' && metodo === 'GET') {
     return json(res, 200, { configurado: db.usuarios.length > 0, centro: db.centro.nombre });
   }
   if (ruta === '/api/configurar' && metodo === 'POST') {
     if (db.usuarios.length) err(400, 'El sistema ya está configurado');
+    if (bloqueado(ip)) err(429, 'Demasiados intentos. Espera 5 minutos.');
     const b = await leerCuerpo(req);
+    if (String(b.codigo || '').trim() !== codigoInstalacion) { fallo(ip); err(403, 'El código de instalación no es correcto. Míralo en la ventana del servidor.'); }
     if (b.ejemplo) {
       const ej = crearDatosDeEjemplo(nuevoId, hashClave);
       db = Object.assign(vacia(), ej);
@@ -275,12 +293,12 @@ async function api(req, res, ruta) {
     if (!u || !claveCorrecta(u, b.clave || '')) { fallo(ip); err(401, 'Usuario o clave incorrectos'); }
     intentos.delete(ip);
     const token = crearSesion(u);
-    return json(res, 200, { ok: true }, { 'Set-Cookie': `sesion=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${HORAS * 3600}` });
+    return json(res, 200, { ok: true }, { 'Set-Cookie': `sesion=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${HORAS * 3600}${esHttps(req) ? '; Secure' : ''}` });
   }
   if (ruta === '/api/salir' && metodo === 'POST') {
     const m = /(?:^|;\s*)sesion=([a-f0-9]+)/.exec(req.headers.cookie || '');
     if (m) sesiones.delete(m[1]);
-    return json(res, 200, { ok: true }, { 'Set-Cookie': 'sesion=; Path=/; Max-Age=0' });
+    return json(res, 200, { ok: true }, { 'Set-Cookie': `sesion=; Path=/; Max-Age=0${esHttps(req) ? '; Secure' : ''}` });
   }
 
   const u = usuarioDe(req);
@@ -543,14 +561,16 @@ http.createServer(async (req, res) => {
   fs.readFile(file, (e, data) => {
     if (e) { res.writeHead(404); return res.end('No encontrado'); }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache',
-      'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' });
+      'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin',
+      'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
     res.end(data);
   });
-}).listen(PORT, '0.0.0.0', () => {
+}).listen(PORT, HOST, () => {
   console.log('Registro Escolar funcionando.');
   console.log(`  En esta computadora: http://localhost:${PORT}`);
-  for (const list of Object.values(os.networkInterfaces())) {
+  if (HOST === '0.0.0.0') for (const list of Object.values(os.networkInterfaces())) {
     for (const a of list) if (a.family === 'IPv4' && !a.internal) console.log(`  Otras computadoras y celulares (misma red): http://${a.address}:${PORT}`);
   }
   console.log(`  Datos guardados en: ${DATOS}`);
+  if (!db.usuarios.length) console.log(`\n  CÓDIGO DE INSTALACIÓN: ${codigoInstalacion}  (se pide al configurar el sistema por primera vez)\n`);
 });
