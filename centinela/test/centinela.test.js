@@ -390,3 +390,12 @@ test('linea de comandos: --analizar acepta eventos de Windows/Sysmon guardados',
   assert.match(salida, /net user soporte/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('Windows: diagnostico de registros (sin permiso, Sysmon no instalado)', () => {
+  const { estadoRegistros, describirEstado } = require('../lib/detectores/windows');
+  const e = estadoRegistros('#REGISTRO|Security|sin-permiso|0\r\n#REGISTRO|System|ok|3\r\n#REGISTRO|Microsoft-Windows-Sysmon/Operational|no-existe|0\r\notra linea');
+  assert.equal(e.length, 3);
+  assert.match(describirEstado(e[0]), /administrador/);
+  assert.match(describirEstado(e[1]), /3 evento/);
+  assert.match(describirEstado(e[2]), /no instalado/);
+});

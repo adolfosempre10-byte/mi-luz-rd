@@ -19,7 +19,20 @@ $filtros = @(
 )
 
 foreach ($f in $filtros) {
-  $eventos = Get-WinEvent -FilterHashtable $f
+  # Diagnostico: se puede leer este registro? (sin permiso / no existe / ok)
+  $estado = 'ok'
+  try { $null = Get-WinEvent -ListLog $f.LogName -ErrorAction Stop }
+  catch {
+    if ($_.Exception -is [System.UnauthorizedAccessException] -or $_.Exception.Message -match 'unauthorized|access|denied|acceso|denegado|autorizad') { $estado = 'sin-permiso' }
+    else { $estado = 'no-existe' }
+  }
+  if ($estado -eq 'ok') {
+    try { $null = Get-WinEvent -LogName $f.LogName -MaxEvents 1 -ErrorAction Stop }
+    catch { if ($_.Exception -is [System.UnauthorizedAccessException] -or $_.Exception.Message -match 'unauthorized|access|denied|acceso|denegado|autorizad') { $estado = 'sin-permiso' } }
+  }
+  $eventos = @()
+  if ($estado -eq 'ok') { $eventos = @(Get-WinEvent -FilterHashtable $f) }
+  "#REGISTRO|$($f.LogName)|$estado|$($eventos.Count)"
   foreach ($ev in $eventos) {
     $x = [xml]$ev.ToXml()
     $d = @{}

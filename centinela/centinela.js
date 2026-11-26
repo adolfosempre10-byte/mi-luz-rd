@@ -144,7 +144,11 @@ async function vigilar(rutaConfig) {
   const cfg = loadOrExit(rutaConfig);
   const ctx = armar(cfg);
   log('info', `Centinela ${VERSION} en "${cfg.equipo}" (${process.platform}) - modo ${ctx.respuesta.modo}${ctx.central ? ' - CENTRAL' : ''}${ctx.agente ? ' - AGENTE' : ''}`);
-  if (process.getuid && process.getuid() !== 0 && !cfg.respuesta.simulacro) log('aviso', 'No se esta ejecutando como root: no podra leer algunos registros ni bloquear en el firewall.');
+  if (!cfg.respuesta.simulacro && !(await require('./lib/detectores/windows').esAdministrador())) {
+    log('aviso', process.platform === 'win32'
+      ? 'Esta ventana NO es de administrador: no podra leer los eventos de seguridad ni bloquear IPs. Abre PowerShell con "Ejecutar como administrador".'
+      : 'No se esta ejecutando como root: no podra leer algunos registros ni bloquear en el firewall.');
+  }
 
   await ctx.respuesta.reaplicar();
   setInterval(() => ctx.respuesta.revisarVencidos(), 60 * 1000);
@@ -198,15 +202,35 @@ async function analizar(rutaConfig, archivo) {
 async function revisarWindows(rutaConfig) {
   if (process.platform !== 'win32') { console.error('--revisar-windows solo funciona en Windows. En otro sistema usa --analizar con un archivo.'); process.exit(1); }
   const horas = Number(argumento('--horas')) || 24;
+  const { leerEventos, estadoRegistros, describirEstado, esAdministrador } = require('./lib/detectores/windows');
+  if (!(await esAdministrador())) {
+    console.log(AVISO_ADMIN);
+    process.exit(1);
+  }
   console.log(`Leyendo los eventos de las ultimas ${horas} horas (puede tardar un poco)...`);
-  const { leerEventos } = require('./lib/detectores/windows');
   const salida = await leerEventos(horas * 3600, 512 * 1024 * 1024);
+  console.log('\nREGISTROS DE WINDOWS');
+  const estados = estadoRegistros(salida);
+  if (!estados.length) console.log('  PowerShell no devolvio nada. Revisa que no lo bloquee el antivirus o una politica del equipo.');
+  for (const e of estados) console.log(`  ${e.nombre.padEnd(42)} ${describirEstado(e)}`);
   const lineas = salida.split(/\r?\n/).filter((l) => / Log=\S+ RecordId=/.test(l)).reverse(); // Windows los da del mas nuevo al mas viejo
-  if (!lineas.length) console.log('No se pudo leer ningun evento: ejecuta PowerShell como administrador.');
   const guardar = argumento('--guardar-eventos');
   if (guardar) { fs.writeFileSync(guardar, lineas.join('\n')); console.log(`Eventos guardados en ${guardar} (se pueden volver a analizar con --analizar).`); }
   return analizarLineas(rutaConfig, lineas, 'windows', `eventos de Windows (${horas} h)`);
 }
+
+const AVISO_ADMIN = `
+Esta ventana de PowerShell NO es de administrador, y Windows no deja leer los registros de Seguridad ni de Sysmon sin ese permiso.
+(Por eso tambien "net user ... /add" responde "Error de sistema 5. Acceso denegado".)
+
+Como abrirla como administrador:
+  1. Cierra esta ventana.
+  2. Menu Inicio -> escribe "PowerShell" -> clic derecho en "Windows PowerShell" -> "Ejecutar como administrador" -> "Si".
+  3. La ventana nueva dice "Administrador: Windows PowerShell" en el titulo.
+  4. Vuelve a la carpeta y repite el comando:
+       cd "${__dirname}"
+       node centinela.js ${process.argv.slice(2).join(' ')}
+`;
 
 async function analizarLineas(rutaConfig, lineas, tipo, archivo) {
   const cfg = cargarConfig(rutaConfig);
