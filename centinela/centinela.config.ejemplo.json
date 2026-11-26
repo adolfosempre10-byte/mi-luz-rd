@@ -1,0 +1,81 @@
+{
+  "equipo": "servidor-web-1",
+
+  "listaBlanca": ["127.0.0.1", "::1", "IP-FIJA-DE-LA-OFICINA", "IP-DE-LA-VPN"],
+
+  "registros": null,
+
+  "respuesta": {
+    "bloquearAutomatico": true,
+    "simulacro": false,
+    "duraciones": [3600, 86400, 604800],
+    "cadenas": ["INPUT"],
+    "comandoEmergencia": null
+  },
+
+  "investigacion": {
+    "dnsInverso": true,
+    "geolocalizar": true,
+    "abuseipdbClave": ""
+  },
+
+  "avisos": {
+    "severidadMinima": "media",
+    "maximoPorHora": 30,
+    "urlPanel": "http://IP-DEL-SERVIDOR:8095/",
+    "telegram": {
+      "token": "TOKEN-DEL-BOT-DE-TELEGRAM",
+      "chats": ["ID-DEL-GRUPO-DE-TECNOLOGIA"],
+      "severidadMinima": "media"
+    },
+    "correo": {
+      "host": "smtp.gmail.com",
+      "puerto": 465,
+      "usuario": "alertas@tuempresa.com",
+      "clave": "CLAVE-DE-APLICACION",
+      "de": "alertas@tuempresa.com",
+      "para": ["tecnologia@tuempresa.com"],
+      "severidadMinima": "alta"
+    },
+    "webhooks": [
+      { "formato": "teams", "url": "", "severidadMinima": "alta" },
+      { "formato": "slack", "url": "", "severidadMinima": "media" }
+    ]
+  },
+
+  "red": { "activo": true, "maxConexionesPorIp": 100, "maxMediasAbiertasPorIp": 30 },
+
+  "archivos": {
+    "activo": true,
+    "criticos": null,
+    "carpetas": [],
+    "senuelos": true
+  },
+
+  "windows": { "activo": true },
+
+  "panel": {
+    "activo": true,
+    "puerto": 8095,
+    "direccion": "0.0.0.0",
+    "usuarios": [
+      { "nombre": "ana", "token": "CAMBIAR-POR-UN-TOKEN-LARGO-1" },
+      { "nombre": "luis", "token": "CAMBIAR-POR-UN-TOKEN-LARGO-2" }
+    ],
+    "certificado": "",
+    "claveCertificado": "",
+    "detrasDeProxy": false
+  },
+
+  "central": {
+    "esCentral": false,
+    "url": "",
+    "tokenAgentes": "",
+    "minutosSinReportar": 5
+  },
+
+  "reglasDesactivadas": [],
+  "ajustesReglas": {
+    "web-inundacion": { "umbral": { "cantidad": 300, "segundos": 10 } }
+  }
+}

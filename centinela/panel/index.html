@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Centinela</title>
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icono.svg">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <section id="entrar" class="entrar" hidden>
+    <img src="icono.svg" alt="" width="64" height="64">
+    <h1>Centinela</h1>
+    <p>Escribe el token del panel (está en <code>centinela.config.json</code>).</p>
+    <form id="formEntrar">
+      <input id="token" type="password" autocomplete="current-password" placeholder="Token" required>
+      <button type="submit">Entrar</button>
+    </form>
+    <p id="errorEntrar" class="error"></p>
+  </section>
+
+  <main id="app" hidden>
+    <header>
+      <div>
+        <h1>Centinela</h1>
+        <small id="subtitulo"></small>
+      </div>
+      <div class="acciones-cabecera">
+        <button id="btnPrueba" class="secundario" type="button">Probar avisos</button>
+        <button id="btnSalir" class="secundario" type="button">Salir</button>
+      </div>
+    </header>
+
+    <div id="banner" class="banner" hidden></div>
+
+    <section class="tarjetas">
+      <div class="tarjeta"><span id="nAbiertos">0</span><small>Incidentes abiertos</small></div>
+      <div class="tarjeta critica"><span id="nCriticos">0</span><small>Críticos abiertos</small></div>
+      <div class="tarjeta"><span id="nBloqueos">0</span><small>IPs bloqueadas</small></div>
+      <div class="tarjeta"><span id="nEquipos">1</span><small>Equipos vigilados</small></div>
+    </section>
+
+    <nav class="pestanas">
+      <button data-pestana="incidentes" class="activa" type="button">Incidentes</button>
+      <button data-pestana="bloqueos" type="button">Bloqueos</button>
+      <button data-pestana="equipos" type="button">Equipos</button>
+    </nav>
+
+    <section id="p-incidentes" class="pestana">
+      <div class="filtros">
+        <select id="filtroEstado">
+          <option value="activos">Abiertos e investigando</option>
+          <option value="todos">Todos</option>
+          <option value="resuelto">Resueltos</option>
+        </select>
+        <select id="filtroSeveridad">
+          <option value="">Toda gravedad</option>
+          <option value="critica">Crítica</option>
+          <option value="alta">Alta</option>
+          <option value="media">Media</option>
+          <option value="baja">Baja</option>
+        </select>
+        <input id="filtroTexto" type="search" placeholder="Buscar IP, equipo o ataque">
+      </div>
+      <ul id="listaIncidentes" class="lista"></ul>
+    </section>
+
+    <section id="p-bloqueos" class="pestana" hidden>
+      <form id="formBloquear" class="fila-form">
+        <input id="ipBloquear" placeholder="IP a bloquear" required>
+        <input id="horasBloquear" type="number" min="0" step="1" value="24" title="Horas (0 = permanente)">
+        <input id="motivoBloquear" placeholder="Motivo">
+        <button type="submit">Bloquear</button>
+      </form>
+      <ul id="listaBloqueos" class="lista"></ul>
+    </section>
+
+    <section id="p-equipos" class="pestana" hidden>
+      <ul id="listaEquipos" class="lista"></ul>
+    </section>
+  </main>
+
+  <dialog id="detalle">
+    <div class="detalle-cabecera">
+      <h2 id="dTitulo"></h2>
+      <button id="dCerrar" class="secundario" type="button">Cerrar</button>
+    </div>
+    <div id="dCuerpo"></div>
+    <div class="detalle-acciones">
+      <button data-estado="investigando" type="button">Estoy investigando</button>
+      <button data-estado="resuelto" type="button">Resuelto</button>
+      <button data-estado="falsa-alarma" class="secundario" type="button">Falsa alarma</button>
+      <button id="dDesbloquear" class="secundario" type="button">Desbloquear IP</button>
+      <button id="dInforme" class="secundario" type="button">Descargar informe</button>
+    </div>
+    <form id="formNota" class="fila-form">
+      <input id="nota" placeholder="Agregar nota de la investigación">
+      <button type="submit">Guardar nota</button>
+    </form>
+  </dialog>
+
+  <script src="panel.js"></script>
+</body>
+</html>
