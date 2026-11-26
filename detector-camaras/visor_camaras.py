@@ -118,21 +118,57 @@ def probar_ruta(ip, puerto, ruta, usuario, clave):
         return "error"
 
 
-def buscar_marca(ip, puerto, usuario, clave, aviso=lambda t: None):
+def orden_marcas(puertos=()):
+    """Orden de prueba segun los puertos abiertos del equipo (pista de la marca)."""
+    orden = list(range(len(RUTAS)))
+    pistas = []
+    if 9000 in puertos:          # Swann / Lorex fabricados por Raysharp
+        pistas += [1, 3]
+    if 8000 in puertos:          # Hikvision y sus marcas
+        pistas += [0]
+    if 37777 in puertos:         # Dahua y sus marcas
+        pistas += [2]
+    if 34567 in puertos:         # XMEye
+        pistas += [7]
+    vistos = []
+    for i in pistas + orden:
+        if i not in vistos:
+            vistos.append(i)
+    return vistos
+
+
+MSG_CLAVE = ("El NVR no aceptó el usuario o la contraseña.\n\n"
+                              "• Usa la contraseña del NVR: la que pusiste al configurarlo en la pantalla del "
+                              "televisor (la que pide al entrar al menú con el mouse). La contraseña de la app "
+                              "del celular (tu cuenta Swann / correo) es otra y no sirve aquí.\n"
+                              "• El usuario casi siempre es «admin».\n"
+                              "• En el menú del NVR, revisa Red → RTSP (o Servicios de red) que esté activado.\n\n"
+                              "Espera unos 5 minutos antes de volver a intentarlo: tras varios intentos fallidos "
+                              "muchos NVR se bloquean un rato.")
+
+MAX_FALLOS_CLAVE = 3  # mas intentos fallidos pueden bloquear el NVR unos minutos
+
+
+def buscar_marca(ip, puerto, usuario, clave, aviso=lambda t: None, puertos=()):
     """Prueba las direcciones de cada marca con la camara 1.
     Devuelve (indice_en_RUTAS, None) o (None, mensaje de error).
-    Se detiene al primer 'contrasena incorrecta' para no bloquear el equipo."""
-    for i, (marca, sub, _) in enumerate(RUTAS):
+    Como algunos equipos dicen 'contrasena incorrecta' cuando la direccion es de otra
+    marca, prueba hasta MAX_FALLOS_CLAVE formatos antes de rendirse."""
+    fallos_clave = 0
+    for i in orden_marcas(puertos):
+        marca, sub, _ = RUTAS[i]
         aviso(f"Probando formato {marca}...")
         r = probar_ruta(ip, puerto, _ruta(sub, 1, usuario, clave), usuario, clave)
         if r == "ok":
             return i, None
         if r == "clave":
-            return None, ("Usuario o contraseña incorrectos.\n\nUsa los mismos con los que entras al NVR "
-                          "en la pantalla del televisor o en la app del celular (el usuario casi siempre es "
-                          "«admin»).\n\nOjo: muchos NVR se bloquean unos minutos después de varios intentos fallidos.")
+            fallos_clave += 1
+            if fallos_clave >= MAX_FALLOS_CLAVE:
+                return None, MSG_CLAVE
         if r == "error":
             return None, f"No se pudo conectar con {ip}:{puerto}. Revisa que el NVR esté encendido y en la misma red."
+    if fallos_clave:
+        return None, MSG_CLAVE
     return None, ("El equipo contestó, pero ninguna dirección de video conocida funcionó.\n"
                   "Busca en el manual del NVR la «dirección RTSP» y ábrela en VLC.")
 
@@ -318,7 +354,7 @@ class VentanaVisor(tk.Toplevel):
         self.destroy()
 
 
-def abrir_visor(padre, ip, puerto_sugerido=554):
+def abrir_visor(padre, ip, puerto_sugerido=554, puertos=()):
     """Flujo completo: pedir acceso, encontrar el formato y abrir la cuadricula."""
     d = DialogoAcceso(padre, ip)
     if puerto_sugerido:
@@ -341,7 +377,7 @@ def abrir_visor(padre, ip, puerto_sugerido=554):
 
     def trabajo():
         resultado["r"] = buscar_marca(ip, puerto, usuario, clave,
-                                      aviso=lambda t: padre.after(0, txt.set, t))
+                                      aviso=lambda t: padre.after(0, txt.set, t), puertos=puertos)
 
     hilo = threading.Thread(target=trabajo, daemon=True)
     hilo.start()

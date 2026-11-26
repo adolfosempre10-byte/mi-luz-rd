@@ -228,7 +228,7 @@ class App(tk.Tk):
         if not sel:
             return
         e = self.equipos[int(sel[0])]
-        visor_camaras.abrir_visor(self, e["ip"], self._puerto_rtsp(e) or 554)
+        visor_camaras.abrir_visor(self, e["ip"], self._puerto_rtsp(e) or 554, e["puertos"])
 
     def abrir_web(self, _=None):
         sel = self.tabla.selection()
