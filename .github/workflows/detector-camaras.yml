@@ -1,44 +1,19 @@
-name: Detector de camaras (.exe para Windows)
+name: Detector de camaras (quitar descarga publica)
 
 on:
-  workflow_dispatch:
   push:
     paths:
-      - "detector-camaras/**"
       - ".github/workflows/detector-camaras.yml"
 
 permissions:
   contents: write
 
 jobs:
-  windows-exe:
-    runs-on: windows-latest
+  quitar-descarga:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Actualizar lista de fabricantes (OUI)
-        working-directory: detector-camaras
-        run: python actualizar_oui.py
-      - name: Instalar PyInstaller
-        run: pip install pyinstaller==6.11.1 opencv-python-headless==4.10.0.84 numpy==2.1.3
-      - name: Prueba rapida del escaner
-        working-directory: detector-camaras
-        run: python detector_camaras.py --red 127.0.0.0/30 --sin-navegador --salida prueba.html
-      - name: Crear DetectorCamaras.exe
-        working-directory: detector-camaras
-        run: pyinstaller --onefile --windowed --name DetectorCamaras --add-data "oui.txt.gz:." app_camaras.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: DetectorCamaras-Windows
-          path: detector-camaras/dist/DetectorCamaras.exe
-      - name: Publicar descarga directa (siempre la ultima version)
-        shell: bash
+      - name: Borrar el enlace publico de descarga del .exe
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete detector-camaras --yes --cleanup-tag || true
-          gh release create detector-camaras detector-camaras/dist/DetectorCamaras.exe \
-            --target "${{ github.sha }}" --title "Detector de camaras" --latest \
-            --notes "Descarga DetectorCamaras.exe y abrelo. Si Windows dice 'Windows protegio su PC': Mas informacion -> Ejecutar de todas formas."
+          GH_REPO: ${{ github.repository }}
+        run: gh release delete detector-camaras --yes --cleanup-tag || echo "Ya no existia"
