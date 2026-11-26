@@ -7,6 +7,9 @@ on:
       - "detector-camaras/**"
       - ".github/workflows/detector-camaras.yml"
 
+permissions:
+  contents: write
+
 jobs:
   windows-exe:
     runs-on: windows-latest
@@ -30,3 +33,12 @@ jobs:
         with:
           name: DetectorCamaras-Windows
           path: detector-camaras/dist/DetectorCamaras.exe
+      - name: Publicar descarga directa (siempre la ultima version)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete detector-camaras --yes --cleanup-tag || true
+          gh release create detector-camaras detector-camaras/dist/DetectorCamaras.exe \
+            --target "${{ github.sha }}" --title "Detector de camaras" --latest \
+            --notes "Descarga DetectorCamaras.exe y abrelo. Si Windows dice 'Windows protegio su PC': Mas informacion -> Ejecutar de todas formas."

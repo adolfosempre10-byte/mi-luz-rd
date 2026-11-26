@@ -8,9 +8,8 @@ Es un proyecto aparte de Mi Luz RD.
 
 ## Cómo usarlo
 
-**Opción fácil, sin instalar nada:** descarga `DetectorCamaras.exe`
-(GitHub → pestaña **Actions** → "Detector de camaras (.exe para Windows)" → la última ejecución → **DetectorCamaras-Windows**).
-Descomprime el zip y abre el `.exe`. Si Windows muestra "Windows protegió su PC", toca **Más información → Ejecutar de todas formas**
+**Opción fácil, sin instalar nada:** descarga la última versión de
+https://github.com/adolfosempre10-byte/mi-luz-rd/releases/latest/download/DetectorCamaras.exe y ábrela. Si Windows muestra "Windows protegió su PC", toca **Más información → Ejecutar de todas formas**
 (sale porque el programa no está firmado).
 
 **Con Python:** instala Python 3 desde https://www.python.org/downloads/ (marca **Add Python to PATH**)
