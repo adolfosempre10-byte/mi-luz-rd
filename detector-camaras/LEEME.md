@@ -35,3 +35,23 @@ En Linux o Mac: `python3 detector_camaras.py`. Para otra red: `python3 detector_
   memoria, no aparece. Por eso el informe trae también consejos de revisión física (linterna y lente, luces infrarrojas,
   redes Wi-Fi raras como `IPC-xxxx` o `HDWIFICAM`).
 - "Posible cámara" no es prueba: impresoras, TV y bombillos inteligentes a veces dan pistas parecidas.
+
+## Relación con la clase
+
+Es la idea que salió en clase: un escáner "tipo Nmap" para revisar la red de un Airbnb sin necesitar Kali.
+Hace lo que se sugirió allí:
+
+- **Descubrir equipos** de la red (barrido + tabla ARP, como `nmap -sn`).
+- **Fabricante por la MAC** (OUI).
+- **Puertos típicos de cámaras**: RTSP 554 y ONVIF (WS-Discovery, más 80/8000/8899).
+
+Tiene el mismo límite que señaló el profesor: si la red está **segmentada** (las cámaras en otra VLAN o en otra red
+Wi-Fi), el escáner no las ve. Por eso el informe incluye también la revisión física.
+
+Equivalente aproximado con Nmap, para comparar en Kali:
+
+```
+sudo nmap -sn 192.168.1.0/24
+sudo nmap -sV -p 554,8554,80,8000,8899,34567,37777 --open 192.168.1.0/24
+nmap --script broadcast-wsdd-discover,broadcast-upnp-info
+```
