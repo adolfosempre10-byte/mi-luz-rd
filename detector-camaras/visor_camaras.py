@@ -41,6 +41,8 @@ RUTAS = [
     ("Generica", "/live/ch{c0}/1", "/live/ch{c0}/0"),
     ("Generica 2", "/stream{c}", "/stream{c}"),
     ("Generica 3", "/{c}", "/{c}"),
+    ("Swann EliteX / canales desde 0", "/ch{c0:02d}/1", "/ch{c0:02d}/0"),
+    ("Swann NVR (doble barra)", "//Streaming/Channels/{c}02", "//Streaming/Channels/{c}01"),
 ]
 
 
@@ -52,23 +54,34 @@ def _md5(t):
     return hashlib.md5(t.encode("utf-8")).hexdigest()
 
 
-def _rtsp(ip, puerto, uri, cabecera_auth=None, cseq=1):
+def _leer_respuesta(s):
+    datos = b""
+    while b"\r\n\r\n" not in datos and len(datos) < 65536:
+        trozo = s.recv(4096)
+        if not trozo:
+            break
+        datos += trozo
+    cabecera, _, cuerpo = datos.partition(b"\r\n\r\n")
+    texto = cabecera.decode("latin-1", "ignore")
+    largo = re.search(r"Content-Length:\s*(\d+)", texto, re.I)
+    if largo:  # leer el cuerpo para dejar la conexion limpia para la siguiente peticion
+        falta = int(largo.group(1)) - len(cuerpo)
+        while falta > 0:
+            trozo = s.recv(min(falta, 4096))
+            if not trozo:
+                break
+            falta -= len(trozo)
+    m = re.match(r"RTSP/1\.\d\s+(\d+)", texto)
+    return (int(m.group(1)) if m else 0), texto
+
+
+def _pedir(s, uri, cseq, cabecera_auth=None):
     lineas = [f"DESCRIBE {uri} RTSP/1.0", f"CSeq: {cseq}", "Accept: application/sdp",
               "User-Agent: DetectorCamaras"]
     if cabecera_auth:
         lineas.append(f"Authorization: {cabecera_auth}")
-    with socket.create_connection((ip, puerto), timeout=4) as s:
-        s.settimeout(4)
-        s.sendall(("\r\n".join(lineas) + "\r\n\r\n").encode())
-        datos = b""
-        while b"\r\n\r\n" not in datos and len(datos) < 65536:
-            trozo = s.recv(4096)
-            if not trozo:
-                break
-            datos += trozo
-    texto = datos.decode("latin-1", "ignore")
-    m = re.match(r"RTSP/1\.\d\s+(\d+)", texto)
-    return (int(m.group(1)) if m else 0), texto
+    s.sendall(("\r\n".join(lineas) + "\r\n\r\n").encode())
+    return _leer_respuesta(s)
 
 
 def _auth(texto_401, usuario, clave, uri):
@@ -100,15 +113,27 @@ def _ruta(plantilla, canal, usuario, clave):
 
 
 def probar_ruta(ip, puerto, ruta, usuario, clave):
-    """'ok', 'clave' (usuario o contrasena mal), 'no' (esa ruta no existe) o 'error'."""
+    """'ok', 'clave' (usuario o contrasena mal), 'no' (esa ruta no existe) o 'error'.
+    Pide acceso y manda la contrasena por la MISMA conexion: muchos grabadores
+    solo aceptan la contrasena en la conexion donde dieron el 'nonce'."""
     uri = f"rtsp://{ip}:{puerto}{ruta}"
     try:
-        cod, texto = _rtsp(ip, puerto, uri)
-        if cod == 200:
-            return "ok"
-        if cod != 401:
-            return "no"
-        cod2, _ = _rtsp(ip, puerto, uri, _auth(texto, usuario, clave, uri), cseq=2)
+        with socket.create_connection((ip, puerto), timeout=5) as s:
+            s.settimeout(5)
+            cod, texto = _pedir(s, uri, 1)
+            if cod == 200:
+                return "ok"
+            if cod != 401:
+                return "no"
+            auth = _auth(texto, usuario, clave, uri)
+            try:
+                cod2, _ = _pedir(s, uri, 2, auth)
+            except OSError:
+                cod2 = 0
+            if cod2 == 0:  # el equipo cerro la conexion tras el 401: intentar en una nueva
+                with socket.create_connection((ip, puerto), timeout=5) as s2:
+                    s2.settimeout(5)
+                    cod2, _ = _pedir(s2, uri, 1, auth)
         if cod2 == 200:
             return "ok"
         if cod2 == 401:
@@ -118,14 +143,29 @@ def probar_ruta(ip, puerto, ruta, usuario, clave):
         return "error"
 
 
+def probar_con_ffmpeg(url, espera_ms=8000):
+    """Segunda opinion: deja que FFmpeg (dentro de OpenCV) abra el video con su propia
+    autenticacion. Sirve si el equipo no acepta la forma de autenticar de probar_ruta."""
+    if cv2 is None:
+        return False
+    try:
+        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG,
+                               [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, espera_ms, cv2.CAP_PROP_READ_TIMEOUT_MSEC, espera_ms])
+        ok = cap.isOpened() and cap.read()[0]
+        cap.release()
+        return bool(ok)
+    except Exception:
+        return False
+
+
 def orden_marcas(puertos=()):
     """Orden de prueba segun los puertos abiertos del equipo (pista de la marca)."""
     orden = list(range(len(RUTAS)))
     pistas = []
     if 9000 in puertos:          # Swann / Lorex fabricados por Raysharp
-        pistas += [1, 3]
+        pistas += [1, 11, 0]
     if 8000 in puertos:          # Hikvision y sus marcas
-        pistas += [0]
+        pistas += [0, 12]
     if 37777 in puertos:         # Dahua y sus marcas
         pistas += [2]
     if 34567 in puertos:         # XMEye
@@ -143,34 +183,43 @@ MSG_CLAVE = ("El NVR no aceptó el usuario o la contraseña.\n\n"
                               "del celular (tu cuenta Swann / correo) es otra y no sirve aquí.\n"
                               "• El usuario casi siempre es «admin».\n"
                               "• En el menú del NVR, revisa Red → RTSP (o Servicios de red) que esté activado.\n\n"
-                              "Espera unos 5 minutos antes de volver a intentarlo: tras varios intentos fallidos "
+                              "Si estás seguro de la contraseña, prueba eligiendo a mano otro «Formato» en la ventana de acceso.\n\n"
+              "Espera unos 5 minutos antes de volver a intentarlo: tras varios intentos fallidos "
                               "muchos NVR se bloquean un rato.")
 
 MAX_FALLOS_CLAVE = 3  # mas intentos fallidos pueden bloquear el NVR unos minutos
 
 
-def buscar_marca(ip, puerto, usuario, clave, aviso=lambda t: None, puertos=()):
+def buscar_marca(ip, puerto, usuario, clave, aviso=lambda t: None, puertos=(), solo=None):
     """Prueba las direcciones de cada marca con la camara 1.
     Devuelve (indice_en_RUTAS, None) o (None, mensaje de error).
+    solo = indice de un formato elegido a mano (prueba solo ese).
     Como algunos equipos dicen 'contrasena incorrecta' cuando la direccion es de otra
-    marca, prueba hasta MAX_FALLOS_CLAVE formatos antes de rendirse."""
-    fallos_clave = 0
-    for i in orden_marcas(puertos):
+    marca, prueba hasta MAX_FALLOS_CLAVE formatos y luego pide una segunda opinion a FFmpeg."""
+    fallos = []
+    lista = [solo] if solo is not None else orden_marcas(puertos)
+    for i in lista:
         marca, sub, _ = RUTAS[i]
         aviso(f"Probando formato {marca}...")
         r = probar_ruta(ip, puerto, _ruta(sub, 1, usuario, clave), usuario, clave)
         if r == "ok":
             return i, None
         if r == "clave":
-            fallos_clave += 1
-            if fallos_clave >= MAX_FALLOS_CLAVE:
-                return None, MSG_CLAVE
+            fallos.append(i)
+            if len(fallos) >= MAX_FALLOS_CLAVE:
+                break
         if r == "error":
             return None, f"No se pudo conectar con {ip}:{puerto}. Revisa que el NVR esté encendido y en la misma red."
-    if fallos_clave:
+    if fallos and cv2 is not None:
+        i = fallos[0]
+        aviso(f"Segunda prueba con FFmpeg ({RUTAS[i][0]})...")
+        if probar_con_ffmpeg(url_rtsp(ip, puerto, _ruta(RUTAS[i][1], 1, usuario, clave), usuario, clave)):
+            return i, None
+    if fallos:
         return None, MSG_CLAVE
     return None, ("El equipo contestó, pero ninguna dirección de video conocida funcionó.\n"
-                  "Busca en el manual del NVR la «dirección RTSP» y ábrela en VLC.")
+                  "Prueba eligiendo otro «Formato» en la ventana de acceso, o busca en el manual "
+                  "del NVR la «dirección RTSP».")
 
 
 def url_rtsp(ip, puerto, ruta, usuario, clave):
@@ -201,16 +250,20 @@ class DialogoAcceso(tk.Toplevel):
         self.clave = tk.StringVar()
         self.canales = tk.IntVar(value=4)
         self.puerto = tk.IntVar(value=554)
+        self.formato = tk.StringVar(value="Automático (recomendado)")
+        nombres = ["Automático (recomendado)"] + [r[0] for r in RUTAS]
         filas = (("Usuario:", ttk.Entry(marco, textvariable=self.usuario, width=24)),
                  ("Contraseña:", ttk.Entry(marco, textvariable=self.clave, width=24, show="•")),
                  ("Cámaras:", ttk.Spinbox(marco, from_=1, to=16, textvariable=self.canales, width=6)),
-                 ("Puerto RTSP:", ttk.Entry(marco, textvariable=self.puerto, width=8)))
+                 ("Puerto RTSP:", ttk.Entry(marco, textvariable=self.puerto, width=8)),
+                 ("Formato:", ttk.Combobox(marco, textvariable=self.formato, values=nombres,
+                                           state="readonly", width=34)))
         for i, (txt, w) in enumerate(filas, 1):
             ttk.Label(marco, text=txt).grid(row=i, column=0, sticky="w", pady=3)
             w.grid(row=i, column=1, sticky="w", pady=3)
         filas[1][1].focus_set()
         botones = ttk.Frame(marco)
-        botones.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        botones.grid(row=7, column=0, columnspan=2, sticky="e", pady=(12, 0))
         ttk.Button(botones, text="Cancelar", command=self.destroy).pack(side="right")
         ttk.Button(botones, text="Ver cámaras", command=self._ok).pack(side="right", padx=6)
         self.bind("<Return>", lambda e: self._ok())
@@ -219,8 +272,10 @@ class DialogoAcceso(tk.Toplevel):
 
     def _ok(self):
         try:
+            nombres = [r[0] for r in RUTAS]
+            solo = nombres.index(self.formato.get()) if self.formato.get() in nombres else None
             self.resultado = (self.usuario.get().strip(), self.clave.get(),
-                              max(1, min(16, int(self.canales.get()))), int(self.puerto.get()))
+                              max(1, min(16, int(self.canales.get()))), int(self.puerto.get()), solo)
         except (ValueError, tk.TclError):
             messagebox.showerror("Dato no válido", "Revisa el número de cámaras y el puerto.", parent=self)
             return
@@ -362,7 +417,7 @@ def abrir_visor(padre, ip, puerto_sugerido=554, puertos=()):
     padre.wait_window(d)
     if not d.resultado:
         return
-    usuario, clave, canales, puerto = d.resultado
+    usuario, clave, canales, puerto, solo = d.resultado
 
     espera = tk.Toplevel(padre)
     espera.title("Conectando...")
@@ -377,7 +432,7 @@ def abrir_visor(padre, ip, puerto_sugerido=554, puertos=()):
 
     def trabajo():
         resultado["r"] = buscar_marca(ip, puerto, usuario, clave,
-                                      aviso=lambda t: padre.after(0, txt.set, t), puertos=puertos)
+                                      aviso=lambda t: padre.after(0, txt.set, t), puertos=puertos, solo=solo)
 
     hilo = threading.Thread(target=trabajo, daemon=True)
     hilo.start()
