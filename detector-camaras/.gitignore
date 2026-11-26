@@ -1,0 +1,6 @@
+dist/
+build/
+*.spec
+informe-camaras-*.html
+prueba.html
+__pycache__/

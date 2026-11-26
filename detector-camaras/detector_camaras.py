@@ -333,7 +333,7 @@ def buscar_upnp(espera=3.0):
 # Escaneo
 # ---------------------------------------------------------------------------
 
-def descubrir_equipos(red, mi_ip):
+def descubrir_equipos(red, mi_ip, progreso=None):
     """Toca todas las IP de la red para saber cuales estan encendidas."""
     vivos = set()
     ips = [str(h) for h in red.hosts()]
@@ -351,9 +351,8 @@ def descubrir_equipos(red, mi_ip):
             hechos += 1
             if r:
                 vivos.add(r)
-            if hechos % 16 == 0 or hechos == total:
-                barra(hechos, total, "Buscando equipos")
-    print()
+            if progreso and (hechos % 8 == 0 or hechos == total):
+                progreso(hechos, total, "Buscando equipos")
     # Aunque un equipo no conteste, el intento llena la tabla ARP.
     arp = tabla_arp()
     for ip in arp:
@@ -548,38 +547,35 @@ def informe_html(equipos, red, mi_ip, duracion):
 # Programa principal
 # ---------------------------------------------------------------------------
 
-def main():
-    ap = argparse.ArgumentParser(description="Busca camaras ocultas en tu red Wi-Fi.")
-    ap.add_argument("--red", help="Red a revisar, por ejemplo 192.168.1.0/24 (si no, se detecta sola)")
-    ap.add_argument("--sin-navegador", action="store_true", help="No abrir el informe al terminar")
-    ap.add_argument("--salida", help="Donde guardar el informe HTML")
-    args = ap.parse_args()
-
+def red_automatica():
+    """(red, mi_ip) de la red Wi-Fi/cable a la que esta conectada la computadora."""
     mi_ip = ip_local()
-    if args.red:
-        red = ipaddress.ip_network(args.red, strict=False)
-    else:
-        if mi_ip.startswith("127."):
-            print("No estas conectado a ninguna red. Conectate al Wi-Fi y vuelve a intentarlo.")
-            return 1
-        red = ipaddress.ip_network(f"{mi_ip}/24", strict=False)
+    if mi_ip.startswith("127."):
+        return None, mi_ip
+    return ipaddress.ip_network(f"{mi_ip}/24", strict=False), mi_ip
+
+
+def escanear(red=None, aviso=print, progreso=None):
+    """Revisa la red y devuelve (equipos, red, mi_ip, router, segundos).
+    aviso(texto) recibe mensajes; progreso(n, total, texto) el avance."""
+    mi_ip = ip_local()
+    if red is None:
+        red, mi_ip = red_automatica()
+        if red is None:
+            raise RuntimeError("No estas conectado a ninguna red. Conectate al Wi-Fi y vuelve a intentarlo.")
+    red = ipaddress.ip_network(str(red), strict=False)
     if red.num_addresses > 4096:
-        print("La red es demasiado grande (mas de 4096 direcciones). Usa --red con una red mas chica.")
-        return 1
+        raise RuntimeError("La red es demasiado grande (mas de 4096 direcciones). Elige una red mas chica.")
 
     router = puerta_de_enlace()
-    print()
-    print("  DETECTOR DE CAMARAS OCULTAS")
-    print("  ===========================")
-    print(f"  Esta computadora: {mi_ip}   Red: {red}   Router: {router or '?'}")
-    print()
+    aviso(f"Esta computadora: {mi_ip}   Red: {red}   Router: {router or '?'}")
     inicio = time.time()
 
     with cf.ThreadPoolExecutor(max_workers=2) as ex:
         f_onvif = ex.submit(buscar_onvif)
         f_upnp = ex.submit(buscar_upnp)
-        vivos, arp = descubrir_equipos(red, mi_ip)
-        print("  Preguntando a la red quien es camara (ONVIF / UPnP)...")
+        vivos, arp = descubrir_equipos(red, mi_ip, progreso)
+        aviso("Preguntando a la red quien es camara (ONVIF / UPnP)...")
         onvif, upnp = f_onvif.result(), f_upnp.result()
 
     for ip in list(onvif) + list(upnp):
@@ -589,18 +585,48 @@ def main():
         except ValueError:
             pass
 
-    print(f"  {len(vivos)} equipos encontrados. Revisando cada uno...")
+    aviso(f"{len(vivos)} equipos encontrados. Revisando cada uno...")
     equipos = []
     with cf.ThreadPoolExecutor(max_workers=24) as ex:
         futuros = [ex.submit(analizar, ip, arp.get(ip), onvif, upnp, router) for ip in vivos]
         for i, f in enumerate(cf.as_completed(futuros), 1):
             equipos.append(f.result())
-            barra(i, len(futuros), "Revisando equipos")
-    print("\n")
+            if progreso:
+                progreso(i, len(futuros), "Revisando equipos")
 
     orden = {"ALTA": 0, "MEDIA": 1, "BAJA": 2, "NINGUNA": 3}
     equipos.sort(key=lambda e: (orden[e["nivel"]], -e["puntos"], ipaddress.ip_address(e["ip"])))
+    return equipos, red, mi_ip, router, time.time() - inicio
 
+
+def guardar_informe(equipos, red, mi_ip, duracion, salida=None):
+    carpeta = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+    salida = salida or os.path.join(carpeta, f"informe-camaras-{dt.datetime.now():%Y%m%d-%H%M}.html")
+    try:
+        with open(salida, "w", encoding="utf-8") as f:
+            f.write(informe_html(equipos, red, mi_ip, duracion))
+    except OSError:  # carpeta sin permiso de escritura: usar la carpeta personal
+        salida = os.path.join(os.path.expanduser("~"), os.path.basename(salida))
+        with open(salida, "w", encoding="utf-8") as f:
+            f.write(informe_html(equipos, red, mi_ip, duracion))
+    return salida
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Busca camaras ocultas en tu red Wi-Fi.")
+    ap.add_argument("--red", help="Red a revisar, por ejemplo 192.168.1.0/24 (si no, se detecta sola)")
+    ap.add_argument("--sin-navegador", action="store_true", help="No abrir el informe al terminar")
+    ap.add_argument("--salida", help="Donde guardar el informe HTML")
+    args = ap.parse_args()
+
+    print("\n  DETECTOR DE CAMARAS OCULTAS\n  ===========================")
+    try:
+        equipos, red, mi_ip, _, duracion = escanear(
+            args.red, aviso=lambda t: print("\n  " + t), progreso=barra)
+    except RuntimeError as e:
+        print("  " + str(e))
+        return 1
+    print("\n")
     for e in equipos:
         marca = {"ALTA": "[!!!]", "MEDIA": "[ ! ]", "BAJA": "[ ? ]", "NINGUNA": "[ ok]"}[e["nivel"]]
         print(f"  {marca} {e['ip']:<15} {TEXTO_NIVEL[e['nivel']]:<20} {e['fabricante'][:40]}")
@@ -610,12 +636,7 @@ def main():
     if not equipos:
         print("  No se encontro ningun otro equipo en la red.")
 
-    duracion = time.time() - inicio
-    salida = args.salida or os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        f"informe-camaras-{dt.datetime.now():%Y%m%d-%H%M}.html")
-    with open(salida, "w", encoding="utf-8") as f:
-        f.write(informe_html(equipos, red, mi_ip, duracion))
+    salida = guardar_informe(equipos, red, mi_ip, duracion, args.salida)
     print(f"\n  Informe guardado en: {salida}")
     if not args.sin_navegador:
         webbrowser.open("file://" + os.path.abspath(salida))

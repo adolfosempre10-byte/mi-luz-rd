@@ -1,0 +1,29 @@
+name: Detector de camaras (.exe para Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "detector-camaras/**"
+      - ".github/workflows/detector-camaras.yml"
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar PyInstaller
+        run: pip install pyinstaller==6.11.1
+      - name: Prueba rapida del escaner
+        working-directory: detector-camaras
+        run: python detector_camaras.py --red 127.0.0.0/30 --sin-navegador --salida prueba.html
+      - name: Crear DetectorCamaras.exe
+        working-directory: detector-camaras
+        run: pyinstaller --onefile --windowed --name DetectorCamaras app_camaras.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DetectorCamaras-Windows
+          path: detector-camaras/dist/DetectorCamaras.exe
