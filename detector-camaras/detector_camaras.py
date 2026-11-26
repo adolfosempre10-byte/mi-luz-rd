@@ -145,19 +145,25 @@ def _ruta_recurso(nombre):
     return os.path.join(base, nombre)
 
 
+_OUI_CANDADO = __import__("threading").Lock()
+
+
 def fabricante_mac(mac):
     """Nombre del fabricante segun los primeros 3 bytes de la MAC ('' si no se sabe)."""
     global _OUI
     if _OUI is None:
-        _OUI = {}
-        try:
-            import gzip
-            with gzip.open(_ruta_recurso("oui.txt.gz"), "rt", encoding="utf-8") as f:
-                for linea in f:
-                    pref, _, nombre = linea.rstrip("\n").partition("\t")
-                    _OUI[pref] = nombre
-        except OSError:
-            pass
+        with _OUI_CANDADO:  # varios hilos a la vez: cargar la lista una sola vez y completa
+            if _OUI is None:
+                lista = {}
+                try:
+                    import gzip
+                    with gzip.open(_ruta_recurso("oui.txt.gz"), "rt", encoding="utf-8") as f:
+                        for linea in f:
+                            pref, _, nombre = linea.rstrip("\n").partition("\t")
+                            lista[pref] = nombre
+                except OSError:
+                    pass
+                _OUI = lista
     return _OUI.get(mac.replace(":", "")[:6].upper(), "")
 
 
@@ -690,6 +696,7 @@ def escanear(red=None, aviso=print, progreso=None):
         except ValueError:
             pass
 
+    fabricante_mac("00:00:00")  # cargar la lista de fabricantes antes de usar varios hilos
     aviso(f"{len(vivos)} equipos encontrados. Revisando cada uno...")
     equipos = []
     with cf.ThreadPoolExecutor(max_workers=24) as ex:
