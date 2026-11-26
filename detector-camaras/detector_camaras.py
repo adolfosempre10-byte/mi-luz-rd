@@ -88,6 +88,7 @@ OUI_CAMARA = {
     "00:02:D1": "Vivotek", "00:03:C5": "Mobotix",
     "00:09:18": "Hanwha (Samsung Techwin)", "00:16:6C": "Hanwha (Samsung Techwin)",
     "EC:71:DB": "Reolink",
+    "BC:51:FE": "Swann",
     "2C:AA:8E": "Wyze", "D0:3F:27": "Wyze",
 }
 # Chips Wi-Fi baratos que se usan mucho en camaras espia, enchufes, etc.
