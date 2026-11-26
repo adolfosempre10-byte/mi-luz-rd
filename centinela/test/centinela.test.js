@@ -399,3 +399,18 @@ test('Windows: diagnostico de registros (sin permiso, Sysmon no instalado)', () 
   assert.match(describirEstado(e[1]), /3 evento/);
   assert.match(describirEstado(e[2]), /no instalado/);
 });
+
+test('Windows: crear un usuario normal no es "agregado a administradores" (evento 4732 al grupo Usuarios)', () => {
+  const { ctx } = contexto();
+  const base = (id, ev, resto) => `2026-11-26T15:11:17Z Log=Security RecordId=${id} EventID=${ev} IpAddress= ${resto}`;
+  ctx.motor.procesarLinea('windows', base(1, 4720, 'TargetUserName=prueba123 LogonType= SubjectUserName=User TargetSid=S-1-5-21-1-2-3-1005 MemberSid= Member='));
+  ctx.motor.procesarLinea('windows', base(2, 4732, 'TargetUserName=Usuarios LogonType= SubjectUserName=User TargetSid=S-1-5-32-545 MemberSid=S-1-5-21-1-2-3-1005 Member=DESKTOP-FL74BDC\\prueba123'));
+  assert.deepEqual(ctx.almacen.incidentes.map((i) => i.regla), ['win-usuario-creado']);
+  assert.equal(ctx.almacen.incidentes[0].detalle, 'Usuario "prueba123" creado por User');
+  ctx.motor.procesarLinea('windows', base(3, 4732, 'TargetUserName=Administradores LogonType= SubjectUserName=User TargetSid=S-1-5-32-544 MemberSid=S-1-5-21-1-2-3-1005 Member=DESKTOP-FL74BDC\\prueba123'));
+  const admin = ctx.almacen.incidentes.find((i) => i.regla === 'win-admin-agregado');
+  assert.ok(admin);
+  assert.equal(admin.detalle, 'DESKTOP-FL74BDC\\prueba123 agregado al grupo "Administradores" por User');
+  ctx.motor.procesarLinea('windows', base(4, 4732, 'TargetUserName=Usuarios de escritorio remoto LogonType= SubjectUserName=User TargetSid=S-1-5-32-555 MemberSid=S-1-5-21-9 Member=PC\\juan perez'));
+  assert.equal(ctx.almacen.incidentes.filter((i) => i.regla === 'win-admin-agregado').length, 2);
+});

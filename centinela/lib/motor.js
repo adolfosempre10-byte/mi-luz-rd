@@ -70,7 +70,8 @@ class Motor extends EventEmitter {
     this.estadisticas.eventos++;
     const ahora = ev.fecha ? new Date(ev.fecha).getTime() : Date.now();
     const host = ev.host || this.host;
-    const sujeto = ip || host;
+    // Sin IP, el incidente es del equipo; las reglas "separarPorClave" abren uno por cada usuario, archivo o servicio.
+    const sujeto = ip || (regla.separarPorClave && ev.clave ? `${host}#${ev.clave}` : host);
 
     const abierto = this.buscarAbierto(regla.id, sujeto, host, ahora);
     if (abierto) return this.actualizar(abierto, ev, ahora);
@@ -88,17 +89,17 @@ class Motor extends EventEmitter {
     const cuenta = regla.distinto ? new Set(ventana.map((e) => e.clave)).size : ventana.length;
     if (cuenta < regla.umbral.cantidad) return null;
     this.ventanas.delete(llave);
-    return this.abrir(regla, ip, host, ev, ventana, ahora);
+    return this.abrir(regla, ip, host, ev, ventana, ahora, sujeto);
   }
 
-  abrir(regla, ip, host, ev, ventana, ahora) {
+  abrir(regla, ip, host, ev, ventana, ahora, sujeto) {
     const iso = new Date(ahora).toISOString();
     const usuarios = [...new Set(ventana.map((e) => e.usuario).filter(Boolean))].slice(0, 20);
     const procesos = ventana.filter((e) => e.pid).map((e) => ({ pid: e.pid, imagen: e.imagen || '' })).slice(-20);
     const inc = {
       id: idCorto('inc-'),
       regla: regla.id, titulo: regla.titulo, severidad: regla.severidad, mitre: regla.mitre, fuente: regla.fuente,
-      host, ip, usuarios, procesos, archivo: ev.archivo || undefined,
+      host, ip, sujeto, usuarios, procesos, archivo: ev.archivo || undefined,
       eventos: ventana.length, primerEvento: new Date(ventana[0].t).toISOString(), ultimoEvento: iso,
       creado: iso, actualizado: iso, estado: 'abierto',
       detalle: ev.detalle || '', evidencia: ventana.slice(-MAX_EVIDENCIA).map((e) => e.linea).filter(Boolean),
@@ -141,7 +142,7 @@ class Motor extends EventEmitter {
     for (let i = this.almacen.incidentes.length - 1; i >= 0; i--) {
       const x = this.almacen.incidentes[i];
       if (ahora - Date.parse(x.actualizado) > this.msIncidente) continue;
-      if (x.regla === reglaId && x.host === host && (x.ip || x.host) === sujeto && x.estado !== 'resuelto') return x;
+      if (x.regla === reglaId && x.host === host && (x.sujeto || x.ip || x.host) === sujeto && x.estado !== 'resuelto') return x;
     }
     return null;
   }

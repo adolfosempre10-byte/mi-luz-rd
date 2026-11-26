@@ -251,14 +251,18 @@ async function analizarLineas(rutaConfig, lineas, tipo, archivo) {
   console.log(`Tipo: ${tipo} - ${lineas.length} lineas - ${ctx.motor.estadisticas.eventos} eventos sospechosos - ${inc.length} incidente(s)\n`);
   if (!inc.length) { console.log('No se encontraron ataques con las reglas actuales.'); return; }
   const porIp = new Map();
-  for (const x of inc) { const k = x.ip || x.host; const e = porIp.get(k) || { eventos: 0, reglas: new Set(), sev: x.severidad }; e.eventos += x.eventos; e.reglas.add(x.titulo); porIp.set(k, e); }
-  console.log('ATACANTES (de mas a menos eventos)');
-  [...porIp.entries()].sort((a, b) => b[1].eventos - a[1].eventos).slice(0, 30)
-    .forEach(([ip, e]) => console.log(`  ${ip.padEnd(40)} ${String(e.eventos).padStart(6)} eventos  ${[...e.reglas].join(' | ')}`));
-  console.log('\nINCIDENTES');
+  for (const x of inc.filter((i) => i.ip)) { const e = porIp.get(x.ip) || { eventos: 0, reglas: new Set() }; e.eventos += x.eventos; e.reglas.add(x.titulo); porIp.set(x.ip, e); }
+  if (porIp.size) {
+    console.log('IPs ATACANTES (de mas a menos eventos)');
+    [...porIp.entries()].sort((a, b) => b[1].eventos - a[1].eventos).slice(0, 30)
+      .forEach(([ip, e]) => console.log(`  ${ip.padEnd(40)} ${String(e.eventos).padStart(6)} eventos  ${[...e.reglas].join(' | ')}`));
+    console.log('');
+  }
+  console.log('INCIDENTES');
   for (const x of inc) {
-    console.log(`  [${x.severidad.toUpperCase().padEnd(7)}] ${x.primerEvento.slice(0, 19)}  ${(x.ip || '-').padEnd(16)} ${x.titulo} (${x.eventos})`);
-    if (x.fuente === 'sysmon' && x.detalle) console.log(`             ${x.detalle.slice(0, 160)}`);
+    const quien = x.ip || (x.usuarios?.length ? `usuario: ${x.usuarios.slice(0, 3).join(', ')}` : `equipo: ${x.host}`);
+    console.log(`  [${x.severidad.toUpperCase().padEnd(7)}] ${x.primerEvento.slice(0, 19).replace('T', ' ')}  ${x.titulo} (${x.eventos})`);
+    console.log(`             ${quien}${x.detalle ? ` - ${x.detalle.slice(0, 160)}` : ''}`);
   }
   const destino = argumento('--informe');
   if (destino) {

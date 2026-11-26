@@ -70,6 +70,12 @@ foreach ($f in $filtros) {
     }
     if ($ev.Id -eq 7045) { "$base ServiceName=$(L $d.ServiceName) ImagePath=$(L $d.ImagePath)" }
     elseif ($ev.Id -eq 1116 -or $ev.Id -eq 1117) { "$base Threat=$(L $d.'Threat Name') Path=$(L $d.Path)" }
-    else { "$base IpAddress=$(L $d.IpAddress) TargetUserName=$(L $d.TargetUserName) LogonType=$(L $d.LogonType) SubjectUserName=$(L $d.SubjectUserName)" }
+    else {
+      $miembro = ''
+      if ($ev.Id -eq 4732 -and $d.MemberSid) {
+        try { $miembro = ([System.Security.Principal.SecurityIdentifier]$d.MemberSid).Translate([System.Security.Principal.NTAccount]).Value } catch { $miembro = $d.MemberName }
+      }
+      "$base IpAddress=$(L $d.IpAddress) TargetUserName=$(L $d.TargetUserName) LogonType=$(L $d.LogonType) SubjectUserName=$(L $d.SubjectUserName) TargetSid=$(L $d.TargetSid) MemberSid=$(L $d.MemberSid) Member=$(L $miembro)"
+    }
   }
 }

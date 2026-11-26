@@ -54,6 +54,19 @@ const RXS = {
   lolbins: /(certutil(\.exe)?"?.*\s[-\/](urlcache|verifyctl|decode)\b|bitsadmin(\.exe)?"?.*\/transfer|mshta(\.exe)?"?\s+"?(https?:|javascript:|vbscript:)|regsvr32(\.exe)?"?.*\/i:\s*https?|rundll32(\.exe)?"?.*(javascript:|url\.dll,|shell32\.dll,shellexec_rundll)|msiexec(\.exe)?"?.*\/q.*https?:|wmic(\.exe)?"?.*(process\s+call\s+create|\/format:\s*"?https?)|curl(\.exe)?"?\s.*https?:.*\s-o\s.*\\(temp|appdata|users\\public|programdata)\\)/,
 };
 
+/** Valor de un campo "Nombre=valor" en una linea de evento de Windows (el valor puede tener espacios). */
+function campo(linea, nombre) {
+  const m = new RegExp(`(?:^| )${nombre}=(.*?)(?= [A-Za-z]+=|$)`).exec(linea);
+  return m ? m[1].trim() : '';
+}
+
+/** Grupos locales con privilegios, por SID (no cambian con el idioma de Windows). */
+const GRUPOS_PELIGROSOS = {
+  'S-1-5-32-544': 'Administradores', 'S-1-5-32-555': 'Usuarios de escritorio remoto', 'S-1-5-32-551': 'Operadores de copia de seguridad',
+  'S-1-5-32-549': 'Operadores de servidores', 'S-1-5-32-548': 'Operadores de cuentas', 'S-1-5-32-578': 'Administradores de Hyper-V',
+  'S-1-5-32-562': 'Usuarios COM distribuidos', 'S-1-5-32-580': 'Usuarios de administracion remota',
+};
+
 const RX = {
   escaneo: /(\/\.env\b|\/\.git\/|wp-login\.php|xmlrpc\.php|\/wp-admin|\/wp-content\/plugins|phpmyadmin|\/pma\/|\/admin\.php|\/cgi-bin\/|phpunit|\/boaform|\/hnap1|\/actuator|\/\.aws|\/\.ssh|\/config\.(php|json|ya?ml)|\/server-status|\.(bak|sql|old|swp)$|\/backup|\/shell\.php|\/solr\/|\/manager\/html|\/owa\/|\/autodiscover|\/vendor\/|\/telescope|\/_profiler|\/druid\/|\/console\/)/,
   sqli: /(union(\s|\/\*.*?\*\/)+(all\s+)?select|'\s*(or|and)\s+'?\w+'?\s*=\s*'?\w|\bor\s+1\s*=\s*1|sleep\s*\(\s*\d|benchmark\s*\(|information_schema|waitfor\s+delay|;\s*drop\s+table|\bpg_sleep\b|extractvalue\s*\(|updatexml\s*\()/,
@@ -86,7 +99,7 @@ const REGLAS = [
   },
   {
     id: 'linux-usuario-creado', fuente: 'ssh', titulo: 'Se creo un usuario nuevo en Linux', severidad: 'media', mitre: 'T1136.001',
-    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    separarPorClave: true, umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
     detectar: porTexto(/useradd\[\d+\]: new user: name=(?<usuario>[^,\s]+)/),
     recomendacion: 'Confirmar con el equipo quien creo el usuario. Si nadie lo hizo, es señal de persistencia de un intruso.',
   },
@@ -174,14 +187,29 @@ const REGLAS = [
   },
   {
     id: 'win-usuario-creado', fuente: 'windows', titulo: 'Se creo un usuario nuevo en Windows', severidad: 'media', mitre: 'T1136.001',
-    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
-    detectar: porTexto(/EventID=4720 .*?TargetUserName=(?<usuario>\S*)/),
+    separarPorClave: true, umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    detectar: (l) => {
+      if (!/EventID=4720\b/.test(l)) return null;
+      const usuario = campo(l, 'TargetUserName');
+      const quien = campo(l, 'SubjectUserName');
+      return { usuario, clave: usuario, detalle: `Usuario "${usuario}" creado${quien && quien !== '-' ? ` por ${quien}` : ''}` };
+    },
     recomendacion: 'Confirmar quien creo la cuenta. Si nadie la pidio, deshabilitarla.',
   },
   {
-    id: 'win-admin-agregado', fuente: 'windows', titulo: 'Se agrego alguien a un grupo de administradores', severidad: 'alta', mitre: 'T1098',
-    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
-    detectar: porTexto(/EventID=4732 .*?TargetUserName=(?<usuario>\S*)/),
+    id: 'win-admin-agregado', fuente: 'windows', titulo: 'Se agrego alguien a un grupo con privilegios (administradores, escritorio remoto...)', severidad: 'alta', mitre: 'T1098',
+    separarPorClave: true, umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    detectar: (l) => {
+      if (!/EventID=4732\b/.test(l)) return null;
+      const grupo = campo(l, 'TargetUserName');
+      const sid = campo(l, 'TargetSid');
+      // Se reconoce el grupo por su SID (igual en Windows en español o en inglés); sin SID, por el nombre.
+      const peligroso = sid ? GRUPOS_PELIGROSOS[sid] : (/administra|escritorio remoto|remote desktop|backup|copia de seguridad/i.test(grupo) ? grupo : null);
+      if (!peligroso) return null; // por ejemplo: el usuario nuevo entra al grupo "Usuarios" (normal)
+      const miembro = campo(l, 'Member') || campo(l, 'MemberSid') || '?';
+      const quien = campo(l, 'SubjectUserName');
+      return { usuario: miembro, clave: `${miembro}>${grupo}`, detalle: `${miembro} agregado al grupo "${grupo || peligroso}"${quien && quien !== '-' ? ` por ${quien}` : ''}` };
+    },
     recomendacion: 'Verificar que el cambio de permisos este autorizado.',
   },
   {
@@ -192,7 +220,7 @@ const REGLAS = [
   },
   {
     id: 'win-servicio-nuevo', fuente: 'windows', titulo: 'Se instalo un servicio nuevo en Windows', severidad: 'media', mitre: 'T1543.003',
-    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    separarPorClave: true, umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
     detectar: porTexto(/EventID=7045 .*?ServiceName=(?<usuario>.*?) ImagePath=(?<detalle>.*)$/),
     recomendacion: 'Revisar la ruta del programa del servicio. Servicios desde carpetas temporales o con PowerShell codificado son sospechosos.',
   },
@@ -254,7 +282,7 @@ const REGLAS = [
   },
   {
     id: 'sysmon-tarea-programada', fuente: 'sysmon', titulo: 'Tarea programada o servicio creado por comando', severidad: 'media', mitre: 'T1053.005',
-    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    separarPorClave: true, umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
     detectar: porProceso((e) => RXS.tareas.test(e.cmd)),
     recomendacion: 'Revisar que ejecuta la tarea o servicio y cada cuanto. Si apunta a AppData, Temp, Public o a PowerShell oculto/codificado, es persistencia de un intruso.',
   },
@@ -278,7 +306,7 @@ const REGLAS = [
   },
   {
     id: 'sysmon-arranque-automatico', fuente: 'sysmon', titulo: 'Programa agregado al arranque de Windows', severidad: 'media', mitre: 'T1547.001',
-    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    separarPorClave: true, umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
     detectar: (e) => ((e.evento === 13 || e.evento === 11) && e.destino
       ? { usuario: e.usuario, pid: e.pid, imagen: e.imagen, clave: e.destino, detalle: `${e.imagen} -> ${e.destino} ${e.detalles}`.trim() }
       : null),
@@ -307,7 +335,7 @@ const REGLAS = [
   },
   {
     id: 'archivo-critico-modificado', fuente: 'archivos', titulo: 'Cambio en un archivo critico', severidad: 'alta', mitre: 'T1565.001',
-    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    separarPorClave: true, umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
     recomendacion: 'Confirmar si alguien del equipo hizo el cambio. Si no, comparar con la copia de seguridad y buscar como entro el intruso.',
   },
   {
