@@ -46,4 +46,29 @@ function crearAnalizadorIis() {
   };
 }
 
-module.exports = { parsearCombinado, crearAnalizadorIis, decodificar };
+const nombreArchivo = (ruta) => String(ruta || '').split(/[\\/]/).pop().toLowerCase();
+
+/**
+ * Linea de Sysmon escrita por leer-eventos.ps1:
+ * 2026-11-25T23:12:51Z Log=Sysmon RecordId=9 EventID=1 || User=PC\ana || ProcessId=4321 || Image=C:\...\net.exe || ParentImage=... || CommandLine=...
+ */
+function parsearSysmon(linea) {
+  const partes = linea.split(' || ');
+  const m = /EventID=(\d+)/.exec(partes[0]);
+  if (!m) return null;
+  const d = {};
+  for (const p of partes.slice(1)) {
+    const i = p.indexOf('=');
+    if (i > 0) d[p.slice(0, i)] = p.slice(i + 1);
+  }
+  const pid = Number(d.ProcessId);
+  return {
+    evento: Number(m[1]), usuario: d.User || '', pid: Number.isInteger(pid) && pid > 4 ? pid : null,
+    imagen: d.Image || '', img: nombreArchivo(d.Image), padre: d.ParentImage || '', padreImg: nombreArchivo(d.ParentImage),
+    comando: d.CommandLine || '', cmd: (d.CommandLine || '').toLowerCase().replace(/\^/g, '').replace(/\s+/g, ' '),
+    destino: d.TargetImage || d.TargetObject || d.TargetFilename || '', acceso: (d.GrantedAccess || '').toLowerCase(),
+    detalles: d.Details || '', linea,
+  };
+}
+
+module.exports = { parsearCombinado, crearAnalizadorIis, decodificar, parsearSysmon, nombreArchivo };

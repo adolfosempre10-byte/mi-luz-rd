@@ -7,6 +7,7 @@
 //   web              access.log de nginx/apache, o el del escudo de Centinela (formato combinado)
 //   iis              registros W3C de IIS (Windows)
 //   windows          eventos de Windows (Security, System, Defender) que lee el detector de Windows
+//   sysmon           eventos de Sysmon (llegan por el detector de Windows; el motor los separa)
 //   firewall-windows pfirewall.log con paquetes DROP
 //   firewall-linux   kern.log / syslog con paquetes bloqueados por UFW o por la regla LOG "CENTINELA-SCAN"
 //   red, archivos, panel, central: los generan los detectores internos
@@ -29,6 +30,29 @@ function porTexto(...patrones) {
 function porPeticion(prueba, clave) {
   return (p) => (prueba(p) ? { ip: p.ip, clave: clave ? clave(p) : undefined, detalle: `${p.metodo} ${p.ruta} -> ${p.estado}` } : null);
 }
+
+/** Ayuda: regla de Sysmon sobre la creacion de un proceso (evento 1). */
+function porProceso(prueba, clave) {
+  return (e) => (e.evento === 1 && prueba(e)
+    ? { usuario: e.usuario, pid: e.pid, imagen: e.imagen, clave: clave ? clave(e) : e.cmd, detalle: `${e.padreImg || '?'} -> ${e.comando}`.slice(0, 1000) }
+    : null);
+}
+
+const OFFICE = /^(winword|excel|powerpnt|outlook|onenote|msaccess|mspub|visio)\.exe$/;
+const CONSOLAS = /^(cmd|powershell|pwsh|wscript|cscript|mshta|rundll32|regsvr32|certutil|bitsadmin|schtasks|wmic|msiexec|curl)\.exe$/;
+const RECONOCIMIENTO = /^(whoami|systeminfo|ipconfig|nltest|net|net1|quser|qwinsta|arp|tasklist|nbtstat|route|dsquery|klist|cmdkey|getmac|hostname)\.exe$/;
+const ACCESOS_LSASS = new Set(['0x1010', '0x1410', '0x1438', '0x143a', '0x1fffff', '0x1f3fff', '0x1f1fff', '0x1f0fff', '0x40']);
+const LECTORES_LSASS = /^(msmpeng|csrss|wininit|svchost|wmiprvse|vmtoolsd|mrt|securityhealthservice|lsm|services|mssense|sensecncproxy)\.exe$/;
+const RXS = {
+  borrarCopias: /(vssadmin(\.exe)?"?\s+(delete\s+shadows|resize\s+shadowstorage)|shadowcopy\s+delete|wbadmin(\.exe)?"?\s+delete\s+(catalog|systemstatebackup|backup)|bcdedit(\.exe)?.*(recoveryenabled\s+no|bootstatuspolicy\s+ignoreallfailures)|win32_shadowcopy.*(delete|remove-ciminstance|remove-wmiobject))/,
+  credenciales: /(mimikatz|sekurlsa|lsadump|procdump(64)?(\.exe)?.*lsass|comsvcs(\.dll)?.*(minidump|#24)|lsass.*\.dmp|ntdsutil.*ifm|\\ntds\.dit|reg(\.exe)?"?\s+save\s+hklm\\(sam|security|system)\b)/,
+  apagarDefensas: /(set-mppreference.*-disable(realtimemonitoring|behaviormonitoring|ioavprotection|scriptscanning|blockatfirstseen)\s+(\$?true|1)|add-mppreference.*-exclusion(path|process|extension)|netsh(\.exe)?"?\s+(advfirewall\s+set\s+\w+\s+state\s+off|firewall\s+set\s+opmode\s+(mode=)?disable)|sc(\.exe)?"?\s+(stop|config|delete)\s+(windefend|sense|wdnissvc|wscsvc|sysmon64|sysmon|mpssvc)\b|(stop|set)-service.*(windefend|sysmon|mpssvc)|fltmc(\.exe)?"?\s+unload|sysmon(64)?(\.exe)?"?\s+-u\b|disableantispyware)/,
+  borrarRegistros: /(wevtutil(\.exe)?"?\s+(cl|clear-log)\b|clear-eventlog|remove-eventlog|fsutil(\.exe)?"?\s+usn\s+deletejournal)/,
+  usuarios: /(\bnet1?(\.exe)?"?\s+user\s+.+\s\/add\b|new-localuser\b|\bnet1?(\.exe)?"?\s+(localgroup|group)\s+"?(administrators|administradores|domain admins|admins\. del dominio|remote desktop users|usuarios de escritorio remoto)"?\s+.*\/add\b|add-localgroupmember.*(administrators|administradores|remote desktop|escritorio remoto))/,
+  tareas: /(schtasks(\.exe)?"?\s+\/create\b|register-scheduledtask|new-scheduledtask|\bsc(\.exe)?"?\s+create\s|new-service\s)/,
+  powershell: /(\s-e(nc|ncodedcommand|c)?\s+[a-z0-9+\/=]{20,}|frombase64string|downloadstring|downloadfile|invoke-webrequest|\biwr\s|invoke-restmethod|\birm\s|invoke-expression|\biex\b|net\.webclient|start-bitstransfer|\s-w(indowstyle)?\s+h(idden)?\b|amsiutils|amsiinitfailed|reflection\.assembly\]::load|invoke-mimikatz|invoke-shellcode)/,
+  lolbins: /(certutil(\.exe)?"?.*\s[-\/](urlcache|verifyctl|decode)\b|bitsadmin(\.exe)?"?.*\/transfer|mshta(\.exe)?"?\s+"?(https?:|javascript:|vbscript:)|regsvr32(\.exe)?"?.*\/i:\s*https?|rundll32(\.exe)?"?.*(javascript:|url\.dll,|shell32\.dll,shellexec_rundll)|msiexec(\.exe)?"?.*\/q.*https?:|wmic(\.exe)?"?.*(process\s+call\s+create|\/format:\s*"?https?)|curl(\.exe)?"?\s.*https?:.*\s-o\s.*\\(temp|appdata|users\\public|programdata)\\)/,
+};
 
 const RX = {
   escaneo: /(\/\.env\b|\/\.git\/|wp-login\.php|xmlrpc\.php|\/wp-admin|\/wp-content\/plugins|phpmyadmin|\/pma\/|\/admin\.php|\/cgi-bin\/|phpunit|\/boaform|\/hnap1|\/actuator|\/\.aws|\/\.ssh|\/config\.(php|json|ya?ml)|\/server-status|\.(bak|sql|old|swp)$|\/backup|\/shell\.php|\/solr\/|\/manager\/html|\/owa\/|\/autodiscover|\/vendor\/|\/telescope|\/_profiler|\/druid\/|\/console\/)/,
@@ -185,6 +209,82 @@ const REGLAS = [
     recomendacion: 'Los atacantes apagan el antivirus antes de actuar. Reactivarlo y revisar el equipo de inmediato.',
   },
 
+  // ---------------- Sysmon (procesos, credenciales, persistencia) ----------------
+  // Requiere Sysmon instalado en el equipo Windows. "terminar: true" = Centinela corta el proceso (taskkill).
+  {
+    id: 'sysmon-office-lanza-consola', fuente: 'sysmon', titulo: 'Office abrio una consola o script (documento malicioso)', severidad: 'critica', mitre: 'T1204.002',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false, terminar: true,
+    detectar: porProceso((e) => OFFICE.test(e.padreImg) && CONSOLAS.test(e.img)),
+    recomendacion: 'Un documento de Word/Excel/Outlook ejecuto comandos: casi siempre es un adjunto malicioso (macro). Desconectar el equipo, ubicar el documento y el correo de donde vino, y avisar a los demas usuarios que no lo abran.',
+  },
+  {
+    id: 'sysmon-borrar-copias', fuente: 'sysmon', titulo: 'RANSOMWARE: se estan borrando las copias de seguridad de Windows', severidad: 'critica', mitre: 'T1490',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false, terminar: true, emergencia: true,
+    detectar: porProceso((e) => RXS.borrarCopias.test(e.cmd)),
+    recomendacion: 'Borrar las instantaneas (vssadmin/wbadmin) es el paso previo a cifrar los archivos. DESCONECTAR EL EQUIPO DE LA RED YA, sin apagarlo, y revisar los demas equipos.',
+  },
+  {
+    id: 'sysmon-robo-credenciales', fuente: 'sysmon', titulo: 'Intento de robar claves de la memoria (lsass / SAM)', severidad: 'critica', mitre: 'T1003.001',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false, terminar: true,
+    detectar: (e) => {
+      if (e.evento === 10 && /lsass\.exe$/i.test(e.destino) && ACCESOS_LSASS.has(e.acceso) && !LECTORES_LSASS.test(e.img)) {
+        return { usuario: e.usuario, pid: e.pid, imagen: e.imagen, clave: e.imagen, detalle: `${e.imagen} abrio lsass.exe con acceso ${e.acceso}` };
+      }
+      return porProceso((x) => RXS.credenciales.test(x.cmd))(e);
+    },
+    recomendacion: 'Alguien intenta sacar las claves guardadas en memoria (Mimikatz, procdump, comsvcs). Aislar el equipo y cambiar las claves de TODAS las cuentas que hayan iniciado sesion en el, empezando por administradores.',
+  },
+  {
+    id: 'sysmon-apagar-defensas', fuente: 'sysmon', titulo: 'Intento de apagar el antivirus, el firewall o Sysmon', severidad: 'critica', mitre: 'T1562.001',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false, terminar: true,
+    detectar: porProceso((e) => RXS.apagarDefensas.test(e.cmd)),
+    recomendacion: 'Los atacantes apagan las defensas antes de actuar. Verificar que Defender, el firewall y Sysmon sigan activos y revisar quien ejecuto el comando.',
+  },
+  {
+    id: 'sysmon-borrar-registros', fuente: 'sysmon', titulo: 'Comando para borrar los registros de eventos', severidad: 'critica', mitre: 'T1070.001',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    detectar: porProceso((e) => RXS.borrarRegistros.test(e.cmd)),
+    recomendacion: 'Borrar los registros es ocultar huellas. Revisar el equipo completo; la evidencia que Centinela ya guardo sigue en el panel.',
+  },
+  {
+    id: 'sysmon-usuario-por-comando', fuente: 'sysmon', titulo: 'Usuario creado o hecho administrador por linea de comandos', severidad: 'alta', mitre: 'T1136.001',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    detectar: porProceso((e) => RXS.usuarios.test(e.cmd), (e) => e.cmd.replace(/^"?[^"]*?net1?(\.exe)?"?\s+/, 'net ')),
+    recomendacion: 'Confirmar quien creo la cuenta y para que. Si nadie la pidio, deshabilitarla y buscar como entro el intruso (es tipico crear un usuario "soporte" o "admin" para volver despues).',
+  },
+  {
+    id: 'sysmon-tarea-programada', fuente: 'sysmon', titulo: 'Tarea programada o servicio creado por comando', severidad: 'media', mitre: 'T1053.005',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    detectar: porProceso((e) => RXS.tareas.test(e.cmd)),
+    recomendacion: 'Revisar que ejecuta la tarea o servicio y cada cuanto. Si apunta a AppData, Temp, Public o a PowerShell oculto/codificado, es persistencia de un intruso.',
+  },
+  {
+    id: 'sysmon-powershell-sospechoso', fuente: 'sysmon', titulo: 'PowerShell sospechoso (codificado, oculto o descargando)', severidad: 'alta', mitre: 'T1059.001',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    detectar: porProceso((e) => /^(powershell|powershell_ise|pwsh)\.exe$/.test(e.img) && RXS.powershell.test(e.cmd)),
+    recomendacion: 'Decodificar el comando (si viene en Base64) y ver que descarga o ejecuta. Revisar que proceso lo lanzo (ParentImage).',
+  },
+  {
+    id: 'sysmon-binario-del-sistema', fuente: 'sysmon', titulo: 'Programa de Windows usado para descargar o ejecutar codigo', severidad: 'alta', mitre: 'T1218',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    detectar: porProceso((e) => RXS.lolbins.test(e.cmd)),
+    recomendacion: 'certutil, mshta, regsvr32, bitsadmin o rundll32 usados asi son tecnica tipica para colar malware. Ver que URL o archivo usaron y bloquear ese dominio.',
+  },
+  {
+    id: 'sysmon-reconocimiento', fuente: 'sysmon', titulo: 'Reconocimiento: muchos comandos para conocer el equipo y la red', severidad: 'media', mitre: 'T1082',
+    umbral: { cantidad: 5, segundos: 300 }, distinto: true, bloquear: false,
+    detectar: porProceso((e) => RECONOCIMIENTO.test(e.img) && !/\/add\b/.test(e.cmd), (e) => `${e.img} ${e.cmd.split(' ')[1] || ''}`),
+    recomendacion: 'Alguien ejecuto seguidos whoami, ipconfig, net user, systeminfo... Es lo primero que hace un intruso al entrar. Confirmar si fue alguien de soporte.',
+  },
+  {
+    id: 'sysmon-arranque-automatico', fuente: 'sysmon', titulo: 'Programa agregado al arranque de Windows', severidad: 'media', mitre: 'T1547.001',
+    umbral: { cantidad: 1, segundos: 60 }, bloquear: false,
+    detectar: (e) => ((e.evento === 13 || e.evento === 11) && e.destino
+      ? { usuario: e.usuario, pid: e.pid, imagen: e.imagen, clave: e.destino, detalle: `${e.imagen} -> ${e.destino} ${e.detalles}`.trim() }
+      : null),
+    recomendacion: 'Revisar el programa que se agrego al arranque (Run, Winlogon o carpeta Inicio). Si no es software conocido, quitarlo y analizar el archivo.',
+  },
+
   // ---------------- Escaneo de puertos (firewall) ----------------
   {
     id: 'red-escaneo-puertos', fuente: 'firewall-windows', titulo: 'Escaneo de puertos', severidad: 'media', mitre: 'T1046',
@@ -246,6 +346,9 @@ const MITRE = {
   T1499: 'Denegacion de servicio en el equipo', 'T1543.003': 'Servicio de Windows', 'T1548.003': 'Abuso de sudo',
   'T1562.001': 'Desactivar defensas', 'T1565.001': 'Manipulacion de datos guardados', 'T1595.002': 'Escaneo de vulnerabilidades',
   'T1595.003': 'Escaneo con listas de palabras', 'T1070.001': 'Borrar registros de Windows',
+  'T1204.002': 'Archivo malicioso abierto por el usuario', T1490: 'Inhibir la recuperacion del sistema', 'T1003.001': 'Robo de credenciales de LSASS',
+  'T1053.005': 'Tarea programada', 'T1059.001': 'PowerShell', T1218: 'Binarios de Windows usados para atacar',
+  T1082: 'Reconocimiento del sistema', 'T1547.001': 'Arranque automatico (Run / carpeta Inicio)',
 };
 
 function cargarReglas(desactivadas = [], ajustes = {}) {
@@ -260,4 +363,4 @@ function cargarReglas(desactivadas = [], ajustes = {}) {
 
 const fuentesDe = (fuente) => (fuente === 'iis' ? 'web' : fuente);
 
-module.exports = { REGLAS, MITRE, cargarReglas, fuentesDe, RX };
+module.exports = { REGLAS, MITRE, cargarReglas, fuentesDe, RX, RXS };

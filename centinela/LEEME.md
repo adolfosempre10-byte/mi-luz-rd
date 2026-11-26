@@ -8,10 +8,10 @@ Es un proyecto aparte de Mi Luz RD. Está hecho en Node.js, **sin dependencias**
 
 | Paso | Qué hace Centinela |
 |---|---|
-| **Detectar** | Lee en vivo los registros de SSH, del servidor web (nginx, Apache, IIS), los eventos de seguridad de Windows, el registro del firewall, las conexiones abiertas y los archivos importantes. Compara todo contra 32 reglas de ataque. |
+| **Detectar** | Lee en vivo los registros de SSH, del servidor web (nginx, Apache, IIS), los eventos de seguridad de Windows, el registro del firewall, las conexiones abiertas y los archivos importantes. Compara todo contra 43 reglas de ataque, 11 de ellas para Sysmon. |
 | **Detener** | Bloquea la IP en el firewall del sistema (iptables en Linux, Firewall de Windows, pf en macOS). La primera vez 1 hora, la segunda 24 horas, después 7 días. Con varios equipos, un atacante detectado en uno queda bloqueado en **todos**. |
 | **Identificar** | IP, nombre DNS, si viene de internet o de un equipo de la propia red, país y proveedor, reputación en AbuseIPDB, usuarios que intentó usar y la técnica de ataque (MITRE ATT&CK). |
-| **Mitigar** | Además del bloqueo: límite de peticiones para apps web, y un comando de emergencia (por ejemplo desconectar la red) cuando detecta ransomware. |
+| **Mitigar** | Además del bloqueo: corta el proceso atacante (con Sysmon), límite de peticiones para apps web, y un comando de emergencia (por ejemplo desconectar la red) cuando detecta ransomware. |
 | **Investigar** | Cada incidente trae la evidencia (las líneas exactas del registro), el historial de la IP, qué otros equipos atacó y una lista de **qué hacer**. Se descarga como informe. También analiza registros viejos. |
 | **Avisar** | Telegram, correo, Microsoft Teams, Slack o Discord, según la gravedad. |
 | **Alertas** | Panel web con los incidentes, su estado (abierto, investigando, resuelto, falsa alarma), notas del equipo y las IPs bloqueadas. |
@@ -24,7 +24,7 @@ node centinela.js --simulacro
 ```
 
 Simula una fuerza bruta por SSH que termina en intrusión, un escáner web con inyección SQL, un intento de Log4Shell,
-fuerza bruta a Escritorio Remoto y un ransomware. Muestra cómo responde y el aviso exacto que le llegaría a tecnología.
+fuerza bruta a Escritorio Remoto, un Word que abre PowerShell y crea un usuario (Sysmon) y un ransomware. Muestra cómo responde y el aviso exacto que le llegaría a tecnología.
 No toca el firewall. Con `--enviar` manda esos avisos de verdad a los canales configurados.
 
 ## Instalar
@@ -117,11 +117,54 @@ o el botón *Probar avisos* del panel.
 | Usuario nuevo, alguien agregado a administradores, servicio nuevo | eventos de Windows / Linux | Media / Alta | Aviso |
 | Registro de seguridad borrado, antivirus apagado | eventos de Windows | **Crítica** | Aviso |
 | Malware detectado por Windows Defender | eventos de Defender | Alta | Aviso |
+| Las 11 reglas de Sysmon (ver la sección **Sysmon**) | Sysmon | Media a Crítica | Corta el proceso en los casos críticos |
 | Intentos de entrar al panel de Centinela | el propio panel | Alta | Bloquea |
 | Un equipo dejó de reportar | central | Alta | Aviso |
 
 Si la misma IP dispara **3 reglas distintas en 24 horas**, Centinela sube la gravedad (ataque por varios frentes).
 Las reglas están en `lib/reglas.js`; se pueden apagar (`reglasDesactivadas`) o cambiar sus umbrales (`ajustesReglas`).
+
+## Sysmon (Windows)
+
+[Sysmon](https://learn.microsoft.com/sysinternals/downloads/sysmon) es una herramienta gratuita de Microsoft que registra cada programa
+que se ejecuta, con su línea de comandos y quién lo lanzó. Si está instalado, Centinela lo lee solo (no hay que configurar nada) y suma estas reglas:
+
+| Regla | Ejemplo | Gravedad | Respuesta |
+|---|---|---|---|
+| Office abre una consola o script | `WINWORD.EXE` → `powershell.exe` (macro maliciosa) | Crítica | Corta el proceso |
+| Borrado de copias de seguridad | `vssadmin delete shadows`, `wbadmin delete catalog`, `bcdedit ... recoveryenabled no` | Crítica | Corta el proceso + comando de emergencia |
+| Robo de claves | acceso a `lsass.exe`, `comsvcs.dll MiniDump`, `procdump lsass`, `reg save hklm\sam`, Mimikatz | Crítica | Corta el proceso |
+| Apagar defensas | `Set-MpPreference -DisableRealtimeMonitoring`, `netsh advfirewall set ... state off`, `sc stop WinDefend`, `sysmon -u` | Crítica | Corta el proceso |
+| Borrar registros de eventos | `wevtutil cl`, `Clear-EventLog` | Crítica | Aviso |
+| Usuario creado o hecho administrador por comando | `net user soporte ... /add`, `New-LocalUser`, `net localgroup administradores ... /add` | Alta | Aviso |
+| PowerShell sospechoso | `-enc` (Base64), `-w hidden`, `IEX`, `DownloadString`, `Invoke-WebRequest` | Alta | Aviso |
+| Programas de Windows usados para atacar | `certutil -urlcache`, `mshta http...`, `regsvr32 /i:http`, `bitsadmin /transfer`, `wmic process call create` | Alta | Aviso |
+| Tarea programada o servicio por comando (T1053.005) | `schtasks /create`, `Register-ScheduledTask`, `sc create` | Media | Aviso |
+| Reconocimiento | 5 comandos distintos en 5 min: `whoami`, `ipconfig /all`, `net user`, `systeminfo`, `nltest`... | Media | Aviso |
+| Programa agregado al arranque | claves `Run`/`RunOnce`/`Winlogon` del registro o la carpeta Inicio | Media | Aviso |
+
+Para instalar Sysmon (PowerShell como administrador, en la carpeta donde descomprimiste Sysmon):
+
+```powershell
+.\Sysmon64.exe -accepteula -i sysmonconfig.xml
+```
+
+Como `sysmonconfig.xml` usa una configuración conocida, por ejemplo la de *SwiftOnSecurity* o *olafhartong/sysmon-modular* (GitHub).
+Verifica que registre los eventos **1** (procesos), **10** (acceso a `lsass.exe`), **11** (archivos) y **13** (registro);
+sin el 10, la regla de robo de claves solo ve los comandos, no el acceso directo a la memoria.
+
+**Cortar procesos:** en las reglas críticas Centinela ejecuta `taskkill /PID ... /T /F` sobre el proceso atacante y sus hijos.
+Nunca toca procesos vitales (`lsass`, `csrss`, `winlogon`, `services`, `svchost`, `explorer`, el antivirus, Sysmon ni a sí mismo).
+Para que solo avise, sin cortar: `"respuesta": { "terminarProcesos": false }`.
+
+**Revisar lo que ya pasó** (por ejemplo, después de un laboratorio): lee los eventos de Seguridad, Defender y Sysmon de las últimas horas
+y arma el informe sin bloquear ni cortar nada:
+
+```powershell
+node centinela.js --revisar-windows --horas 24 --informe informe.txt
+```
+
+Con `--guardar-eventos eventos.txt` además guarda los eventos, que luego se pueden volver a analizar en otra PC con `--analizar eventos.txt`.
 
 ## Celulares
 
@@ -147,6 +190,7 @@ Para **proteger** los celulares de la empresa lo correcto es complementar con:
 node centinela.js --analizar /var/log/auth.log
 node centinela.js --analizar /var/log/nginx/access.log.1 --informe informe.txt
 node centinela.js --analizar C:\Windows\System32\LogFiles\Firewall\pfirewall.log
+node centinela.js --revisar-windows --horas 48
 ```
 
 Usa la hora real de cada línea, lista los atacantes de más a menos actividad y, con `--informe`, guarda la evidencia completa
@@ -185,7 +229,7 @@ para cortar la red antes de que cifre las carpetas compartidas de los demás equ
 ## Límites (lo que no hace)
 
 - **DDoS grandes** (miles de IPs a la vez): el bloqueo por IP no alcanza; hace falta Cloudflare u otro servicio anti-DDoS.
-- No es un antivirus: en Windows se apoya en Windows Defender y alerta cuando detecta algo o cuando lo apagan.
+- No es un antivirus: en Windows se apoya en Windows Defender y Sysmon, y alerta cuando detectan algo o cuando los apagan. Los atacantes pueden disfrazar comandos para esquivar reglas de texto; por eso conviene combinar varias capas.
 - No revisa tráfico cifrado ni paquetes de red uno por uno (para eso existen Suricata o Zeek).
 - Para una empresa grande o con requisitos de auditoría, conviene complementar con herramientas maduras como
   **Wazuh** (SIEM y agentes), **CrowdSec** (bloqueo con listas de IPs compartidas por la comunidad) o **Fail2ban**.

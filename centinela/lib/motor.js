@@ -3,7 +3,7 @@
 // y, cuando se pasa el umbral de una regla, abre un incidente.
 const { EventEmitter } = require('events');
 const { normalizarIp, idCorto, subirSeveridad, nivel } = require('./util');
-const { parsearCombinado, crearAnalizadorIis } = require('./analizadores');
+const { parsearCombinado, crearAnalizadorIis, parsearSysmon } = require('./analizadores');
 
 const MAX_EVIDENCIA = 15;
 const DIA = 24 * 3600 * 1000;
@@ -42,6 +42,10 @@ class Motor extends EventEmitter {
       } else entrada = parsearCombinado(linea);
       if (!entrada) return 0;
       fuenteReglas = 'web';
+    } else if (fuente === 'windows' && / Log=Sysmon /.test(` ${linea.slice(0, 80)}`)) {
+      entrada = parsearSysmon(linea);
+      if (!entrada) return 0;
+      fuenteReglas = 'sysmon';
     }
     let n = 0;
     for (const regla of this.reglas.values()) {
@@ -75,7 +79,7 @@ class Motor extends EventEmitter {
 
     const llave = `${regla.id}|${sujeto}|${host}`;
     const ventana = this.ventanas.get(llave) || [];
-    ventana.push({ t: ahora, clave: ev.clave ?? ev.linea ?? ev.detalle, linea: ev.linea || ev.detalle || '', usuario: ev.usuario });
+    ventana.push({ t: ahora, clave: ev.clave ?? ev.linea ?? ev.detalle, linea: ev.linea || ev.detalle || '', usuario: ev.usuario, pid: ev.pid, imagen: ev.imagen });
     const limite = ahora - regla.umbral.segundos * 1000;
     while (ventana.length && ventana[0].t < limite) ventana.shift();
     if (ventana.length > 5000) ventana.splice(0, ventana.length - 5000);
@@ -90,14 +94,15 @@ class Motor extends EventEmitter {
   abrir(regla, ip, host, ev, ventana, ahora) {
     const iso = new Date(ahora).toISOString();
     const usuarios = [...new Set(ventana.map((e) => e.usuario).filter(Boolean))].slice(0, 20);
+    const procesos = ventana.filter((e) => e.pid).map((e) => ({ pid: e.pid, imagen: e.imagen || '' })).slice(-20);
     const inc = {
       id: idCorto('inc-'),
       regla: regla.id, titulo: regla.titulo, severidad: regla.severidad, mitre: regla.mitre, fuente: regla.fuente,
-      host, ip, usuarios, archivo: ev.archivo || undefined,
+      host, ip, usuarios, procesos, archivo: ev.archivo || undefined,
       eventos: ventana.length, primerEvento: new Date(ventana[0].t).toISOString(), ultimoEvento: iso,
       creado: iso, actualizado: iso, estado: 'abierto',
       detalle: ev.detalle || '', evidencia: ventana.slice(-MAX_EVIDENCIA).map((e) => e.linea).filter(Boolean),
-      bloquear: !!regla.bloquear, emergencia: !!regla.emergencia, recomendacion: regla.recomendacion,
+      bloquear: !!regla.bloquear, emergencia: !!regla.emergencia, terminar: !!regla.terminar, recomendacion: regla.recomendacion,
       enListaBlanca: ip ? this.listaBlanca.contiene(ip) : false,
       notas: [], acciones: [],
     };
@@ -126,8 +131,9 @@ class Motor extends EventEmitter {
     const linea = ev.linea || ev.detalle;
     if (linea) { inc.evidencia.push(linea); if (inc.evidencia.length > MAX_EVIDENCIA) inc.evidencia.shift(); }
     if (ev.usuario && !inc.usuarios.includes(ev.usuario) && inc.usuarios.length < 20) inc.usuarios.push(ev.usuario);
+    if (ev.pid && inc.procesos && !inc.procesos.some((p) => p.pid === ev.pid) && inc.procesos.length < 50) inc.procesos.push({ pid: ev.pid, imagen: ev.imagen || '' });
     this.almacen.guardar();
-    this.emit('actualizado', inc);
+    this.emit('actualizado', inc, ev);
     return inc;
   }
 

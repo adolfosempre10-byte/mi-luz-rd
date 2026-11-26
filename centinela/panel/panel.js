@@ -160,6 +160,8 @@ async function verIncidente(id) {
   fila(dl, 'Ubicación', inv.ubicacion ? [inv.ubicacion.ciudad, inv.ubicacion.pais, inv.ubicacion.proveedor].filter(Boolean).join(' · ') : null);
   fila(dl, 'Reputación', inv.reputacion ? `${inv.reputacion.puntaje}/100 · ${inv.reputacion.reportes} reportes (AbuseIPDB)` : null);
   fila(dl, 'Usuarios', inc.usuarios?.join(', '));
+  fila(dl, 'Procesos', inc.procesos?.map((p) => `${p.pid} · ${p.imagen}`).join('\n'));
+  fila(dl, 'Detalle', inc.detalle);
   fila(dl, 'Eventos', `${inc.eventos} · de ${fecha(inc.primerEvento)} a ${fecha(inc.ultimoEvento)}`);
   fila(dl, 'Técnica', inv.tecnica ? `${inv.tecnica.id} ${inv.tecnica.nombre}` : inc.mitre);
   fila(dl, 'Historial de la IP', inv.historial ? `${inv.historial.incidentes} incidente(s), bloqueada ${inv.historial.vecesBloqueada} vez/veces, equipos: ${inv.historial.equiposAtacados.join(', ')}` : null);

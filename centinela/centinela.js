@@ -5,6 +5,7 @@
 //   node centinela.js                      vigila este equipo (usa centinela.config.json)
 //   node centinela.js --simulacro          simula ataques para ver como responde (no toca el firewall)
 //   node centinela.js --analizar ARCHIVO   investiga un registro viejo (auth.log, access.log, pfirewall.log...)
+//   node centinela.js --revisar-windows    investiga los eventos de Windows y Sysmon de las ultimas 24 h (--horas N)
 //   node centinela.js --probar-avisos      manda un mensaje de prueba a Telegram/correo/Teams
 //   node centinela.js --desbloquear IP     quita el bloqueo de una IP
 //   node centinela.js --config RUTA        usa otro archivo de configuracion
@@ -36,7 +37,7 @@ const PREDETERMINADA = () => ({
   registros: null,
   reglasDesactivadas: [],
   ajustesReglas: {},
-  respuesta: { bloquearAutomatico: true, simulacro: false, duraciones: [3600, 86400, 604800], cadenas: ['INPUT'], comandoEmergencia: null },
+  respuesta: { bloquearAutomatico: true, terminarProcesos: true, simulacro: false, duraciones: [3600, 86400, 604800], cadenas: ['INPUT'], comandoEmergencia: null },
   investigacion: { dnsInverso: true, geolocalizar: false, abuseipdbClave: '' },
   avisos: { severidadMinima: 'media', maximoPorHora: 30, urlPanel: '', telegram: { token: '', chats: [] }, correo: {}, webhooks: [] },
   red: { activo: true, intervalo: 10, maxConexionesPorIp: 100, maxMediasAbiertasPorIp: 30 },
@@ -88,6 +89,19 @@ function armar(cfg, { enMemoria = false } = {}) {
   if (cfg.central.esCentral) ctx.central = new Central({ almacen, avisos, respuesta, motor, config: cfg.central });
   if (!cfg.central.esCentral && cfg.central.url) ctx.agente = new Agente({ config: cfg.central, almacen, respuesta, avisos, host: cfg.equipo, version: VERSION });
 
+  const terminar = async (inc, p) => {
+    inc.procesosTerminados = inc.procesosTerminados || [];
+    if (inc.procesosTerminados.includes(p.pid)) return;
+    inc.procesosTerminados.push(p.pid);
+    const r = await respuesta.terminarProceso(p.pid, p.imagen);
+    if (!r) return;
+    const nombre = String(p.imagen || '').split(/[\\/]/).pop();
+    inc.acciones.push({
+      fecha: new Date().toISOString(),
+      texto: r.ok ? `Proceso ${p.pid} (${nombre}) terminado${respuesta.modo === 'simulacro' ? ' [simulacro]' : ''}` : `No se pudo terminar el proceso ${p.pid} (${nombre}): ${r.error}`,
+    });
+  };
+
   // Detectar -> detener -> investigar -> avisar
   motor.on('incidente', async (inc) => {
     log('alerta', `${inc.titulo}${inc.ip ? ` desde ${inc.ip}` : ''} [${inc.severidad}] (${inc.eventos} eventos)`);
@@ -104,6 +118,9 @@ function armar(cfg, { enMemoria = false } = {}) {
           });
         }
       }
+      if (inc.terminar && inc.procesos?.length) {
+        for (const p of inc.procesos) await terminar(inc, p);
+      }
       if (inc.emergencia) {
         const r = await respuesta.emergencia(inc);
         if (r) inc.acciones.push({ fecha: fecha(), texto: `Comando de emergencia ejecutado: ${r.ok ? 'ok' : r.error}` });
@@ -115,7 +132,11 @@ function armar(cfg, { enMemoria = false } = {}) {
     else await avisos.incidente(inc, 'nuevo').catch((e) => log('error', e.message));
     motor.emit('listo', inc);
   });
-  motor.on('actualizado', (inc) => ctx.agente?.marcar(inc));
+  // Si el mismo ataque lanza procesos nuevos, tambien se cortan.
+  motor.on('actualizado', async (inc, ev) => {
+    if (inc.terminar && ev?.pid) { await terminar(inc, { pid: ev.pid, imagen: ev.imagen }); almacen.guardar(); }
+    ctx.agente?.marcar(inc);
+  });
   return ctx;
 }
 
@@ -160,29 +181,47 @@ function adivinarTipo(lineas) {
   if (/^#Fields:/m.test(muestra)) return 'iis';
   if (/ DROP (TCP|UDP) /.test(muestra)) return 'firewall-windows';
   if (/CENTINELA-SCAN|\[UFW BLOCK\]/.test(muestra)) return 'firewall-linux';
-  if (/EventID=\d+/.test(muestra)) return 'windows';
+  if (/Log=\S+ RecordId=\d+ EventID=\d+|EventID=\d+/.test(muestra)) return 'windows';
   if (/sshd(-session)?\[\d+\]|sudo:|useradd\[/.test(muestra)) return 'ssh';
   if (/^\S+ \S+ \S+ \[[^\]]+\] "/m.test(muestra)) return 'web';
   return null;
 }
 
 async function analizar(rutaConfig, archivo) {
+  const lineas = fs.readFileSync(archivo, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
+  const tipo = argumento('--tipo') || adivinarTipo(lineas);
+  if (!tipo) { console.error('No se reconoce el tipo de registro. Indica --tipo ssh|web|iis|windows|firewall-windows|firewall-linux'); process.exit(1); }
+  return analizarLineas(rutaConfig, lineas, tipo, archivo);
+}
+
+/** Revisa los eventos de Windows (Seguridad, Defender y Sysmon) de las ultimas N horas. */
+async function revisarWindows(rutaConfig) {
+  if (process.platform !== 'win32') { console.error('--revisar-windows solo funciona en Windows. En otro sistema usa --analizar con un archivo.'); process.exit(1); }
+  const horas = Number(argumento('--horas')) || 24;
+  console.log(`Leyendo los eventos de las ultimas ${horas} horas (puede tardar un poco)...`);
+  const { leerEventos } = require('./lib/detectores/windows');
+  const salida = await leerEventos(horas * 3600, 512 * 1024 * 1024);
+  const lineas = salida.split(/\r?\n/).filter((l) => / Log=\S+ RecordId=/.test(l)).reverse(); // Windows los da del mas nuevo al mas viejo
+  if (!lineas.length) console.log('No se pudo leer ningun evento: ejecuta PowerShell como administrador.');
+  const guardar = argumento('--guardar-eventos');
+  if (guardar) { fs.writeFileSync(guardar, lineas.join('\n')); console.log(`Eventos guardados en ${guardar} (se pueden volver a analizar con --analizar).`); }
+  return analizarLineas(rutaConfig, lineas, 'windows', `eventos de Windows (${horas} h)`);
+}
+
+async function analizarLineas(rutaConfig, lineas, tipo, archivo) {
   const cfg = cargarConfig(rutaConfig);
   cfg.respuesta.simulacro = true;
   cfg.investigacion = { dnsInverso: false };
   log.silenciar();
   const ctx = armar(cfg, { enMemoria: true });
   ctx.avisos.incidente = async () => [];
-  const lineas = fs.readFileSync(archivo, 'utf8').split(/\r?\n/).filter(Boolean);
-  const tipo = argumento('--tipo') || adivinarTipo(lineas);
-  if (!tipo) { console.error('No se reconoce el tipo de registro. Indica --tipo ssh|web|iis|windows|firewall-windows|firewall-linux'); process.exit(1); }
-  const listos = [];
-  ctx.motor.on('listo', (inc) => listos.push(inc));
   for (const l of lineas) {
     const t = extraerFecha(l);
     ctx.motor.procesarLinea(tipo, l, { archivo, fecha: Number.isFinite(t) ? t : undefined });
   }
   await new Promise((r) => setTimeout(r, 200));
+  // En un analisis no se corta nada: se quitan las acciones simuladas para no confundir.
+  for (const x of ctx.almacen.incidentes) x.acciones = [];
   const inc = ctx.almacen.incidentes;
   console.log(`\nANALISIS DE ${archivo}`);
   console.log(`Tipo: ${tipo} - ${lineas.length} lineas - ${ctx.motor.estadisticas.eventos} eventos sospechosos - ${inc.length} incidente(s)\n`);
@@ -193,7 +232,10 @@ async function analizar(rutaConfig, archivo) {
   [...porIp.entries()].sort((a, b) => b[1].eventos - a[1].eventos).slice(0, 30)
     .forEach(([ip, e]) => console.log(`  ${ip.padEnd(40)} ${String(e.eventos).padStart(6)} eventos  ${[...e.reglas].join(' | ')}`));
   console.log('\nINCIDENTES');
-  for (const x of inc) console.log(`  [${x.severidad.toUpperCase().padEnd(7)}] ${x.primerEvento.slice(0, 19)}  ${(x.ip || '-').padEnd(16)} ${x.titulo} (${x.eventos})`);
+  for (const x of inc) {
+    console.log(`  [${x.severidad.toUpperCase().padEnd(7)}] ${x.primerEvento.slice(0, 19)}  ${(x.ip || '-').padEnd(16)} ${x.titulo} (${x.eventos})`);
+    if (x.fuente === 'sysmon' && x.detalle) console.log(`             ${x.detalle.slice(0, 160)}`);
+  }
   const destino = argumento('--informe');
   if (destino) {
     fs.writeFileSync(destino, inc.map(informeTexto).join(`\n\n${'='.repeat(70)}\n\n`));
@@ -234,7 +276,16 @@ async function simulacro(rutaConfig) {
   console.log('\n5) Fuerza bruta a Escritorio Remoto de Windows desde 192.0.2.77');
   for (let i = 0; i < 9; i++) m.procesarLinea('windows', `Log=Security RecordId=${1000 + i} EventID=4625 IpAddress=192.0.2.77 TargetUserName=Administrador LogonType=10 SubjectUserName=-`);
   await esperar(100);
-  console.log('\n6) Ransomware tocando el archivo señuelo');
+  console.log('\n6) Sysmon: un Word abre PowerShell oculto, crea el usuario "soporte" y borra las copias de seguridad');
+  const ts = new Date().toISOString().slice(0, 19) + 'Z';
+  const sysmon = (id, pid, img, padre, cmd) => `${ts} Log=Sysmon RecordId=${id} EventID=1 || User=OFICINA\\ana || ProcessId=${pid} || Image=${img} || ParentImage=${padre} || CommandLine=${cmd}`;
+  const ps = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+  m.procesarLinea('windows', sysmon(501, 4410, ps, 'C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE', `"${ps}" -nop -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQA`));
+  m.procesarLinea('windows', sysmon(502, 4420, 'C:\\Windows\\System32\\net.exe', ps, 'net user soporte P4ssw0rd! /add'));
+  m.procesarLinea('windows', sysmon(503, 4430, 'C:\\Windows\\System32\\vssadmin.exe', ps, 'vssadmin.exe delete shadows /all /quiet'));
+  await esperar(150);
+
+  console.log('\n7) Ransomware tocando el archivo señuelo');
   m.registrar({ regla: 'ransomware-senuelo', clave: 'C:\\Compartida\\000_no_borrar_centinela.docx', detalle: 'El archivo señuelo C:\\Compartida\\000_no_borrar_centinela.docx fue modificado (cifrado?)' });
   await esperar(300);
 
@@ -282,6 +333,7 @@ if (require.main === module) {
   const rutaConfig = path.resolve(argumento('--config') || path.join(__dirname, 'centinela.config.json'));
   const accion = process.argv.includes('--simulacro') ? simulacro(rutaConfig)
     : process.argv.includes('--analizar') ? analizar(rutaConfig, argumento('--analizar'))
+      : process.argv.includes('--revisar-windows') ? revisarWindows(rutaConfig)
       : process.argv.includes('--probar-avisos') ? probarAvisos(rutaConfig)
         : process.argv.includes('--desbloquear') ? desbloquear(rutaConfig, argumento('--desbloquear'))
           : vigilar(rutaConfig);

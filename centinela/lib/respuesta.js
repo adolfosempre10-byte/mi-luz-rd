@@ -61,6 +61,9 @@ const FIREWALLS = {
   },
 };
 
+const VITALES = new Set(['system', 'smss.exe', 'csrss.exe', 'wininit.exe', 'winlogon.exe', 'services.exe', 'lsass.exe', 'svchost.exe',
+  'explorer.exe', 'dwm.exe', 'lsaiso.exe', 'fontdrvhost.exe', 'msmpeng.exe', 'node.exe', 'sysmon.exe', 'sysmon64.exe']);
+
 class Respuesta {
   /**
    * @param {object} o
@@ -159,6 +162,25 @@ class Respuesta {
     const vigentes = this.almacen.bloqueos.filter((b) => b.activo && (!b.hasta || Date.parse(b.hasta) > Date.now()));
     for (const b of vigentes) await this.aplicar('bloquear', b.ip);
     if (vigentes.length) log('info', `Se reaplicaron ${vigentes.length} bloqueo(s) vigentes.`);
+  }
+
+  /**
+   * Corta un proceso atacante (y sus hijos). Nunca toca procesos vitales de Windows ni al propio Centinela.
+   * Devuelve { ok, error? } o null si no se intento.
+   */
+  async terminarProceso(pid, imagen = '') {
+    const n = Number(pid);
+    if (!Number.isInteger(n) || n <= 4 || n === process.pid || n === process.ppid) return null;
+    const nombre = String(imagen).split(/[\\/]/).pop().toLowerCase();
+    if (VITALES.has(nombre)) return { ok: false, error: `${nombre} es un proceso vital de Windows: no se corta` };
+    if (this.config.terminarProcesos === false) return null;
+    let r;
+    if (this.config.simulacro) { log('accion', `[simulacro] terminar proceso ${n} (${nombre})`); r = { ok: true }; }
+    else if (process.platform === 'win32') r = await ejecutar('taskkill', ['/PID', String(n), '/T', '/F']);
+    else { try { process.kill(n, 'SIGKILL'); r = { ok: true }; } catch (e) { r = { ok: false, error: e.message }; } }
+    this.almacen.auditoria(`TERMINAR proceso ${n} ${nombre}: ${r.ok ? 'ok' : r.error}`);
+    if (r.ok && !this.config.simulacro) log('accion', `Proceso ${n} (${nombre}) terminado.`);
+    return r;
   }
 
   /** Comando de emergencia (por ejemplo desconectar la red) ante ransomware. Lo define el administrador. */

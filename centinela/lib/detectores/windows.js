@@ -1,32 +1,22 @@
 'use strict';
-// Lee los eventos de seguridad de Windows (inicios de sesion fallidos/exitosos, usuarios nuevos,
-// registro borrado, servicios nuevos y alertas de Windows Defender) cada 15 segundos.
+// Lee cada 15 segundos los eventos de seguridad de Windows (inicios de sesion, usuarios nuevos, registro borrado,
+// servicios nuevos), las alertas de Windows Defender y, si esta instalado, Sysmon (procesos, acceso a lsass,
+// persistencia en el registro y en la carpeta de Inicio). El trabajo lo hace leer-eventos.ps1.
 const { execFile } = require('child_process');
+const path = require('path');
 const { log } = require('../util');
 
-const SCRIPT = (segundos) => `
-$ErrorActionPreference='SilentlyContinue'
-[Console]::OutputEncoding=[Text.Encoding]::UTF8
-$desde=(Get-Date).AddSeconds(-${segundos})
-$filtros=@(
-  @{LogName='Security';Id=4625,4624,4720,4732,4740,1102;StartTime=$desde},
-  @{LogName='System';Id=7045;StartTime=$desde},
-  @{LogName='Microsoft-Windows-Windows Defender/Operational';Id=1116,1117,5001,5010,5012;StartTime=$desde}
-)
-foreach($f in $filtros){
-  Get-WinEvent -FilterHashtable $f | ForEach-Object {
-    $ev=$_; $x=[xml]$ev.ToXml(); $d=@{}
-    foreach($n in $x.Event.EventData.Data){ if($n.Name){ $d[$n.Name]=$n.'#text' } }
-    $lg= if($f.LogName -like '*Defender*'){'Defender'} else {$f.LogName}
-    $base="Log=$lg RecordId=$($ev.RecordId) EventID=$($ev.Id)"
-    if($ev.Id -eq 4624){
-      if(@('3','10') -notcontains $d.LogonType -or @('-','127.0.0.1','::1','') -contains $d.IpAddress){ return }
-    }
-    if($ev.Id -eq 7045){ "$base ServiceName=$($d.ServiceName) ImagePath=$($d.ImagePath)" }
-    elseif($ev.Id -eq 1116 -or $ev.Id -eq 1117){ "$base Threat=$($d.'Threat Name') Path=$($d.Path)" }
-    else { "$base IpAddress=$($d.IpAddress) TargetUserName=$($d.TargetUserName) LogonType=$($d.LogonType) SubjectUserName=$($d.SubjectUserName)" }
-  }
-}`;
+const SCRIPT = path.join(__dirname, 'leer-eventos.ps1');
+
+/** Ejecuta leer-eventos.ps1 y devuelve su salida. Con -File (no -EncodedCommand) para no parecer un ataque en Sysmon. */
+function leerEventos(segundos, maxBuffer = 16 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-Segundos', String(Math.round(segundos))],
+      { timeout: 10 * 60 * 1000, windowsHide: true, maxBuffer }, (err, stdout) => {
+        if (err && !stdout) reject(err); else resolve(String(stdout));
+      });
+  });
+}
 
 class DetectorWindows {
   constructor(motor, { intervalo = 15 } = {}) {
@@ -35,7 +25,7 @@ class DetectorWindows {
 
   iniciar() {
     if (process.platform !== 'win32') return this;
-    log('info', 'Vigilando los eventos de seguridad de Windows.');
+    log('info', 'Vigilando los eventos de seguridad de Windows, Defender y Sysmon.');
     this.revisar();
     this.timer = setInterval(() => this.revisar(), this.intervalo * 1000);
     return this;
@@ -43,26 +33,21 @@ class DetectorWindows {
 
   detener() { clearInterval(this.timer); }
 
-  revisar() {
+  async revisar() {
     if (this.ocupado) return;
     this.ocupado = true;
-    const codificado = Buffer.from(SCRIPT(this.intervalo * 4), 'utf16le').toString('base64');
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', codificado],
-      { timeout: 60000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
-        this.ocupado = false;
-        if (err && !stdout) {
-          if (!this.avisado) log('error', `No se pudieron leer los eventos de Windows (${err.message}). Ejecuta Centinela como administrador.`);
-          this.avisado = true;
-          return;
-        }
-        this.procesar(String(stdout));
-      });
+    try {
+      this.procesar(await leerEventos(this.intervalo * 4));
+    } catch (e) {
+      if (!this.avisado) log('error', `No se pudieron leer los eventos de Windows (${e.message}). Ejecuta Centinela como administrador.`);
+      this.avisado = true;
+    } finally { this.ocupado = false; }
   }
 
-  /** Separado para poder probarlo sin Windows. */
+  /** Separado para poder probarlo sin Windows. No repite eventos ya vistos (las lecturas se solapan). */
   procesar(salida) {
     for (const linea of salida.split(/\r?\n/)) {
-      const m = /^Log=(\S+) RecordId=(\d+)/.exec(linea);
+      const m = /^(?:\S+ )?Log=(\S+) RecordId=(\d+)/.exec(linea);
       if (!m) continue;
       const llave = `${m[1]}:${m[2]}`;
       if (this.vistos.has(llave)) continue;
@@ -73,4 +58,4 @@ class DetectorWindows {
   }
 }
 
-module.exports = { DetectorWindows };
+module.exports = { DetectorWindows, leerEventos };

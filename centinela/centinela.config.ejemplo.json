@@ -7,6 +7,7 @@
 
   "respuesta": {
     "bloquearAutomatico": true,
+    "terminarProcesos": true,
     "simulacro": false,
     "duraciones": [3600, 86400, 604800],
     "cadenas": ["INPUT"],

@@ -23,7 +23,9 @@ function mensajeCorto(inc, tipo, urlPanel) {
   l.push(`Accion: ${acciones.length ? acciones.join(' / ') : 'solo aviso'}`);
   if (inc.notas?.length) l.push(inc.notas[0]);
   l.push(`Que hacer: ${inc.recomendacion}`);
-  if (inc.evidencia?.length) l.push(`Evidencia: ${inc.evidencia[inc.evidencia.length - 1].slice(0, 300)}`);
+  if (inc.procesos?.length) l.push(`Proceso: ${inc.procesos.slice(0, 3).map((p) => `${p.pid} ${String(p.imagen).split(/[\\/]/).pop()}`).join(', ')}`);
+  if (inc.fuente === 'sysmon' && inc.detalle) l.push(`Comando: ${inc.detalle.slice(0, 400)}`);
+  else if (inc.evidencia?.length) l.push(`Evidencia: ${inc.evidencia[inc.evidencia.length - 1].slice(0, 300)}`);
   if (urlPanel) l.push(`Panel: ${urlPanel}#${inc.id}`);
   return l.join('\n');
 }

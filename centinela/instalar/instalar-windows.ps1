@@ -9,7 +9,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
 if (-not $node) { Write-Host 'Falta Node.js 20 o superior: https://nodejs.org' -ForegroundColor Red; exit 1 }
 
-# 1) Que Windows registre los inicios de sesion fallidos y los cambios de cuentas (GUIDs: funcionan en Windows en español).
+# 1) Que Windows registre los inicios de sesion fallidos y los cambios de cuentas (GUIDs: funcionan en Windows en espanol).
 auditpol /set /subcategory:"{0CCE9215-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable | Out-Null  # Inicio de sesion
 auditpol /set /subcategory:"{0CCE9217-69AE-11D9-BED3-505054503030}" /failure:enable | Out-Null                  # Bloqueo de cuenta
 auditpol /set /subcategory:"{0CCE9235-69AE-11D9-BED3-505054503030}" /success:enable | Out-Null                  # Cuentas de usuario

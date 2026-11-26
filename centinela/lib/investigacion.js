@@ -81,6 +81,9 @@ function informeTexto(inc) {
   if (inv.dnsInverso?.length) l.push(`Nombre (DNS):    ${inv.dnsInverso.join(', ')}`);
   if (inv.ubicacion) l.push(`Ubicacion:       ${[inv.ubicacion.ciudad, inv.ubicacion.pais].filter(Boolean).join(', ')} - ${inv.ubicacion.proveedor || ''}`);
   if (inv.reputacion) l.push(`Reputacion:      ${inv.reputacion.puntaje}/100 (${inv.reputacion.reportes} reportes en AbuseIPDB)`);
+  if (inc.usuarios?.length) l.push(`Usuarios:        ${inc.usuarios.join(', ')}`);
+  if (inc.procesos?.length) l.push(`Procesos:        ${inc.procesos.map((p) => `${p.pid} ${p.imagen}`).join(' | ')}`);
+  if (inc.detalle) l.push(`Detalle:         ${inc.detalle}`);
   l.push(`Primer evento:   ${inc.primerEvento}`);
   l.push(`Ultimo evento:   ${inc.ultimoEvento}`);
   l.push(`Eventos:         ${inc.eventos}`);
