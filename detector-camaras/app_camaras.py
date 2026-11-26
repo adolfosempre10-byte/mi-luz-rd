@@ -13,6 +13,7 @@ import webbrowser
 from tkinter import messagebox, ttk
 
 import detector_camaras as det
+import visor_camaras
 
 COLOR = {"ALTA": "#c62828", "MEDIA": "#ef6c00", "BAJA": "#827717", "NINGUNA": "#2e7d32"}
 FONDO = {"ALTA": "#ffebee", "MEDIA": "#fff3e0", "BAJA": "#f9fbe7", "NINGUNA": "#ffffff"}
@@ -81,6 +82,8 @@ class App(tk.Tk):
         self.btn_inf = ttk.Button(fila, text="Abrir informe", command=self.abrir_informe, state="disabled")
         self.btn_inf.pack(side="right")
         ttk.Button(fila, text="Consejos", command=self.consejos).pack(side="right", padx=6)
+        self.btn_ver = ttk.Button(fila, text="📹 Ver cámaras", command=self.ver_camaras, state="disabled")
+        self.btn_ver.pack(side="right")
 
         self.barra = ttk.Progressbar(self, mode="determinate")
         self.barra.pack(fill="x", padx=16, pady=(6, 0))
@@ -117,7 +120,7 @@ class App(tk.Tk):
         self.detalle.pack(fill="both", expand=True)
         self.detalle.tag_configure("titulo", font=("Segoe UI", 11, "bold"))
         self.detalle.insert("1.0", "Selecciona un equipo para ver por qué parece (o no) una cámara.\n"
-                                   "Doble clic abre su página web, si tiene.")
+                                   "Doble clic abre su página web, si tiene. Si transmite video, «Ver cámaras» lo muestra en vivo.")
         self.detalle.config(state="disabled")
         cuerpo.add(marco_det, weight=1)
 
@@ -134,6 +137,7 @@ class App(tk.Tk):
                 return
         self.btn.config(state="disabled")
         self.btn_inf.config(state="disabled")
+        self.btn_ver.config(state="disabled")
         self.tabla.delete(*self.tabla.get_children())
         self.lbl_resumen.config(text="", bg="#f4f5f7")
         self.barra.config(value=0)
@@ -200,6 +204,7 @@ class App(tk.Tk):
         if not sel:
             return
         e = self.equipos[int(sel[0])]
+        self.btn_ver.config(state="normal" if self._puerto_rtsp(e) else "disabled")
         d = self.detalle
         d.config(state="normal")
         d.delete("1.0", "end")
@@ -213,6 +218,17 @@ class App(tk.Tk):
         for t, _ in e["pistas"] or [("Ninguna pista de cámara.", 0)]:
             d.insert("end", f"  • {t}\n")
         d.config(state="disabled")
+
+    @staticmethod
+    def _puerto_rtsp(e):
+        return next((p for p in (554, 8554, 10554) if p in e["puertos"]), None)
+
+    def ver_camaras(self):
+        sel = self.tabla.selection()
+        if not sel:
+            return
+        e = self.equipos[int(sel[0])]
+        visor_camaras.abrir_visor(self, e["ip"], self._puerto_rtsp(e) or 554)
 
     def abrir_web(self, _=None):
         sel = self.tabla.selection()

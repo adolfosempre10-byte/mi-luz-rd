@@ -24,6 +24,17 @@ Luego:
 
 Versión de consola (Windows, Linux, Mac): `python3 detector_camaras.py`, o para otra red `python3 detector_camaras.py --red 192.168.0.0/24`.
 
+## Ver tus propias cámaras en vivo
+
+Si en la lista sale tu NVR/DVR o una cámara tuya (los que transmiten video RTSP), selecciónalo y pulsa **📹 Ver cámaras**.
+Pon el usuario y la contraseña del NVR (los mismos de su pantalla o de su app; el usuario casi siempre es `admin`)
+y cuántas cámaras tiene. La app prueba sola los formatos de Hikvision, Swann, Lorex, Dahua, Reolink, Uniview y otros,
+y muestra las cámaras en cuadrícula. Doble clic en una la abre en grande; clic derecho copia su dirección para VLC.
+
+- La contraseña solo se usa mientras la ventana está abierta; no se guarda.
+- Si la contraseña está mal, la app se detiene al primer intento para que el NVR no se bloquee.
+- Solo para equipos tuyos o que tengas permiso de ver.
+
 ## Qué revisa
 
 | Prueba | Qué significa |

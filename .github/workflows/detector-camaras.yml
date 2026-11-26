@@ -19,7 +19,7 @@ jobs:
         working-directory: detector-camaras
         run: python actualizar_oui.py
       - name: Instalar PyInstaller
-        run: pip install pyinstaller==6.11.1
+        run: pip install pyinstaller==6.11.1 opencv-python-headless==4.10.0.84 numpy==2.1.3
       - name: Prueba rapida del escaner
         working-directory: detector-camaras
         run: python detector_camaras.py --red 127.0.0.0/30 --sin-navegador --salida prueba.html
