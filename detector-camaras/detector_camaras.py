@@ -39,6 +39,7 @@ PUERTOS_CAMARA = {
     8554: ("RTSP alterno (video en vivo)", 3),
     10554: ("RTSP alterno (video en vivo)", 3),
     1935: ("RTMP (transmision de video)", 2),
+    9000: ("Video de grabadores (Swann, Lorex y otros NVR/DVR)", 2),
     34567: ("Protocolo de camaras chinas baratas (XMEye / XiongMai)", 4),
     37777: ("Protocolo de camaras Dahua / Amcrest", 4),
     8000: ("Protocolo de camaras Hikvision / EZVIZ", 2),
@@ -103,6 +104,60 @@ OUI_IOT = {
 # ---------------------------------------------------------------------------
 
 TIEMPO = 0.6  # segundos de espera por conexion
+# En Windows, que los comandos (arp, ping, ipconfig) no abran ventanas negras.
+SIN_VENTANA = {"creationflags": 0x08000000} if os.name == "nt" else {}
+
+
+def ejecutar(cmd, tiempo=8):
+    return subprocess.run(cmd, capture_output=True, text=True, errors="ignore",
+                          timeout=tiempo, stdin=subprocess.DEVNULL, **SIN_VENTANA).stdout
+
+
+# ---------------------------------------------------------------------------
+# Lista de fabricantes (OUI)
+# ---------------------------------------------------------------------------
+
+# Palabras en el nombre del fabricante que indican camaras / grabadores.
+MARCAS_CAMARA = [
+    "hikvision", "dahua", "ezviz", "uniview", "tiandy", "hanwha", "samsung techwin",
+    "axis communications", "vivotek", "mobotix", "reolink", "wyze", "amcrest", "foscam",
+    "swann", "lorex", "annke", "imou", "milesight", "honeywell security", "bosch security",
+    "avtech", "geovision", "provision-isr", "hiwatch", "jovision", "tvt digital",
+    "shenzhen tvt", "xiongmai", "hangzhou xiongmai", "sricam", "vstarcam", "wanscam",
+    "escam", "dericam", "zmodo", "arlo", "netgear arlo", "eufy", "yi technology",
+    "shanghai imilab", "imilab", "blink", "ring llc", "canary connect", "nest labs",
+    "dropcam", "hipcam", "shenzhen bilian", "aobo", "anke", "uniarch", "idis", "cp plus",
+]
+# Chips o marcas de aparatos "inteligentes" baratos (camaras espia, enchufes, focos).
+MARCAS_IOT = [
+    "espressif", "tuya", "beken", "realtek semiconductor", "ingenic", "anyka",
+    "fn-link", "hui zhou gaoshengda", "shenzhen century xinyang", "azurewave",
+    "ampak", "mediatek", "allwinner", "fullhan", "goke", "sigmastar", "novatek",
+    "shenzhen ogemray", "leedarson", "hon hai", "lcfc", "xiaomi", "tp-link",
+]
+
+_OUI = None
+
+
+def _ruta_recurso(nombre):
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, nombre)
+
+
+def fabricante_mac(mac):
+    """Nombre del fabricante segun los primeros 3 bytes de la MAC ('' si no se sabe)."""
+    global _OUI
+    if _OUI is None:
+        _OUI = {}
+        try:
+            import gzip
+            with gzip.open(_ruta_recurso("oui.txt.gz"), "rt", encoding="utf-8") as f:
+                for linea in f:
+                    pref, _, nombre = linea.rstrip("\n").partition("\t")
+                    _OUI[pref] = nombre
+        except OSError:
+            pass
+    return _OUI.get(mac.replace(":", "")[:6].upper(), "")
 
 
 def ip_local():
@@ -121,8 +176,7 @@ def puerta_de_enlace():
     """Intenta averiguar la IP del router."""
     try:
         if os.name == "nt":
-            out = subprocess.run(["ipconfig"], capture_output=True, text=True,
-                                 errors="ignore", timeout=5).stdout
+            out = ejecutar(["ipconfig"], 5)
             for m in re.finditer(r"(?:Puerta de enlace|Default Gateway)[^:]*:\s*([\d.]+)", out):
                 return m.group(1)
         else:
@@ -166,8 +220,7 @@ def tabla_arp():
         pass
     for cmd in (["arp", "-a"], ["ip", "neigh"], ["arp", "-an"]):
         try:
-            textos.append(subprocess.run(cmd, capture_output=True, text=True,
-                                         errors="ignore", timeout=8).stdout)
+            textos.append(ejecutar(cmd))
         except Exception:
             continue
     for texto in textos:
@@ -333,27 +386,61 @@ def buscar_upnp(espera=3.0):
 # Escaneo
 # ---------------------------------------------------------------------------
 
+def despertar_arp(ips):
+    """Manda un paquete UDP vacio a cada IP. No espera respuesta: solo obliga a la
+    computadora a preguntar 'quien tiene esta IP?' (ARP), y asi los equipos que no
+    contestan a nada igual quedan anotados en la tabla ARP."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        for ip in ips:
+            for puerto in (9, 137):
+                try:
+                    s.sendto(b"\x00", (ip, puerto))
+                except OSError:
+                    pass
+    finally:
+        s.close()
+
+
+def hacer_ping(ip):
+    if os.name == "nt":
+        cmd = ["ping", "-n", "1", "-w", "700", ip]
+    else:
+        cmd = ["ping", "-c", "1", "-W", "1", ip]
+    try:
+        out = ejecutar(cmd, 4)
+    except Exception:
+        return False
+    return "TTL=" in out.upper()
+
+
 def descubrir_equipos(red, mi_ip, progreso=None):
-    """Toca todas las IP de la red para saber cuales estan encendidas."""
+    """Busca todos los equipos encendidos de la red con 3 metodos:
+    ARP, ping y conexiones a puertos comunes (de celulares, PCs y camaras)."""
     vivos = set()
-    ips = [str(h) for h in red.hosts()]
+    ips = [str(h) for h in red.hosts() if str(h) != mi_ip]
     total = len(ips)
+    despertar_arp(ips)
 
     def tocar(ip):
-        for p in (80, 554, 443, 445, 8080, 62078, 34567):
-            if probar_puerto(ip, p, 0.35):
+        if hacer_ping(ip):
+            return ip
+        for p in (80, 554, 443, 8000, 34567, 37777, 6668, 8080, 445, 62078):
+            if probar_puerto(ip, p, 0.4):
                 return ip
         return None
 
     hechos = 0
-    with cf.ThreadPoolExecutor(max_workers=128) as ex:
+    with cf.ThreadPoolExecutor(max_workers=64) as ex:
         for r in ex.map(tocar, ips):
             hechos += 1
             if r:
                 vivos.add(r)
-            if progreso and (hechos % 8 == 0 or hechos == total):
+            if progreso and (hechos % 4 == 0 or hechos == total):
                 progreso(hechos, total, "Buscando equipos")
-    # Aunque un equipo no conteste, el intento llena la tabla ARP.
+    # Segunda vuelta de ARP para los que tardan en despertar (Wi-Fi en ahorro de energia).
+    despertar_arp(ips)
+    time.sleep(2)
     arp = tabla_arp()
     for ip in arp:
         try:
@@ -382,12 +469,22 @@ def analizar(ip, mac, onvif, upnp, router):
 
     if mac:
         pref = mac[:8]
-        if pref in OUI_CAMARA:
+        marca = fabricante_mac(mac)
+        marca_l = marca.lower()
+        if marca and any(m in marca_l for m in MARCAS_CAMARA):
+            eq["fabricante"] = marca
+            pista(f"La tarjeta de red es de {marca}, fabricante de camaras", 4)
+        elif pref in OUI_CAMARA:
             eq["fabricante"] = OUI_CAMARA[pref]
             pista(f"La tarjeta de red es de {OUI_CAMARA[pref]}, fabricante de camaras", 4)
         elif pref in OUI_IOT:
             eq["fabricante"] = OUI_IOT[pref]
             pista(f"Chip Wi-Fi {OUI_IOT[pref]} (lo usan camaras espia, enchufes y bombillos inteligentes)", 1)
+        elif marca and any(m in marca_l for m in MARCAS_IOT):
+            eq["fabricante"] = marca
+            pista(f"Chip/marca {marca} (se usa en camaras Wi-Fi, enchufes y focos inteligentes)", 1)
+        elif marca:
+            eq["fabricante"] = marca
         elif mac_aleatoria(mac):
             eq["fabricante"] = "MAC privada (casi siempre un celular o laptop)"
 
@@ -440,6 +537,13 @@ def analizar(ip, mac, onvif, upnp, router):
             pista(f"Su pagina web (puerto {p}) menciona: {', '.join(fuertes[:5])}", 4)
         elif palabras:
             pista(f"Usa un servidor web tipico de camaras baratas ({', '.join(palabras[:3])})", 1)
+
+    if eq["puntos"] >= 3:
+        todo = " ".join(t for t, _ in eq["pistas"]).lower() + " " + (eq.get("web") or "").lower()
+        grabador = any(w in todo for w in ("nvr", "dvr", "swann", "lorex", "recorder", "grabador"))
+        eq["tipo"] = "Grabador (NVR/DVR)" if grabador else "Camara o grabador"
+        pista("Si es un grabador (NVR/DVR), las camaras conectadas a el por cable no aparecen "
+              "aparte en la red: solo se ve el grabador", 0)
 
     if eq["es_router"]:
         eq["puntos"] = min(eq["puntos"], 2)

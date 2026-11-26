@@ -205,6 +205,8 @@ class App(tk.Tk):
         d.delete("1.0", "end")
         d.insert("end", f"{e['ip']}  —  {det.TEXTO_NIVEL[e['nivel']]}\n", "titulo")
         d.insert("end", f"MAC: {e['mac'] or 'desconocida'}    Nombre: {e['nombre'] or '—'}\n")
+        if e.get("fabricante"):
+            d.insert("end", f"Fabricante: {e['fabricante']}\n")
         if e.get("web"):
             d.insert("end", f"Página web: {e['web']}\n")
         d.insert("end", "\nPistas:\n", "titulo")

@@ -33,10 +33,13 @@ Versión de consola (Windows, Linux, Mac): `python3 detector_camaras.py`, o para
 | Puertos típicos | 34567 (cámaras chinas XMEye), 37777 (Dahua), 8000 (Hikvision), 8899, 1935, 23, 6668 (Tuya). |
 | Página web del equipo | Busca palabras como Hikvision, IP Camera, DVR, NVR, V380, iCSee, ONVIF en el título y el servidor. |
 | UPnP (SSDP) | Lee cómo se anuncia el equipo en la red (fabricante y modelo). |
-| Dirección MAC | Reconoce tarjetas de red de fabricantes de cámaras (Hikvision, Dahua, Axis, Reolink, Wyze…) y chips Wi-Fi baratos. |
+| Dirección MAC | Dice la marca de cada equipo con la lista oficial de fabricantes (`oui.txt.gz`, unos 30 000) y avisa si es de cámaras (Hikvision, Dahua, Swann, Reolink…) o un chip Wi-Fi barato. |
 | Nombre del equipo | Nombres con "cam", "ipc", "dvr", etc. |
 
 ## Límites
+
+- **Cámaras conectadas a un grabador (NVR/DVR):** las cámaras van por cable al grabador, que les da una red propia por dentro.
+  Desde el Wi-Fi solo se ve el grabador (sale en rojo porque transmite video), no cada cámara.
 
 - Solo ve equipos en **la misma red**. Una cámara en otra red Wi-Fi, con chip de datos 4G, o que solo graba en una
   memoria, no aparece. Por eso el informe trae también consejos de revisión física (linterna y lente, luces infrarrojas,

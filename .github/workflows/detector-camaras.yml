@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Actualizar lista de fabricantes (OUI)
+        working-directory: detector-camaras
+        run: python actualizar_oui.py
       - name: Instalar PyInstaller
         run: pip install pyinstaller==6.11.1
       - name: Prueba rapida del escaner
@@ -22,7 +25,7 @@ jobs:
         run: python detector_camaras.py --red 127.0.0.0/30 --sin-navegador --salida prueba.html
       - name: Crear DetectorCamaras.exe
         working-directory: detector-camaras
-        run: pyinstaller --onefile --windowed --name DetectorCamaras app_camaras.py
+        run: pyinstaller --onefile --windowed --name DetectorCamaras --add-data "oui.txt.gz:." app_camaras.py
       - uses: actions/upload-artifact@v4
         with:
           name: DetectorCamaras-Windows
